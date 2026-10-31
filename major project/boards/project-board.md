@@ -25,6 +25,7 @@ Task board for the Major Project: Secure IoT Healthcare System. Tracks ongoing, 
 - [ ] Task 5: Viva Demonstration Automation Script (`viva_demo.py`)
 
 ## Completed
+- [x] GitHub Remote Repository Deployment: Created public repo `Anzar0904/iot-reinforcement-learning` and pushed initial commit (`https://github.com/Anzar0904/iot-reinforcement-learning`).
 - [x] Strix Security Audit & Hardening (OWASP API4 buffer limits, API8 parameter whitelisting, sliding-window nonce garbage collection).
 - [x] Task 4: Offline 250-Episode DQN Training (`experiments/train_dqn_offline.py`, weights saved to `weights/dqn_iomt_warden.json` & `.pt`, auto-loaded on startup).
 - [x] Task 3: Publication Figures Generator (`experiments/generate_figures.py`, 4 figures generated in SVG/PNG, lightbox modal & batch download in React UI).
