@@ -1,0 +1,43 @@
+{
+  "total_samples": 50000,
+  "scenarios": {
+    "Nominal": 44315,
+    "Cardiac Crisis": 855,
+    "Alzheimer Wander": 1301,
+    "HMAC Tamper": 2031,
+    "Replay Attack": 1498
+  },
+  "elapsed_seconds": 19.27,
+  "results": [
+    {
+      "Method": "Rule-Based (Baseline)",
+      "Accuracy": 0.944,
+      "Precision": 1.0,
+      "Recall (DR)": 0.508,
+      "F1-Score": 0.673,
+      "FPR": 0.0,
+      "Missed Emergencies": 1301,
+      "Avg Latency (ms)": 0.0
+    },
+    {
+      "Method": "Isolation Forest",
+      "Accuracy": 0.871,
+      "Precision": 0.446,
+      "Recall (DR)": 0.551,
+      "F1-Score": 0.493,
+      "FPR": 0.088,
+      "Missed Emergencies": 1187,
+      "Avg Latency (ms)": 0.0
+    },
+    {
+      "Method": "DQN (IoMT-Warden)",
+      "Accuracy": 0.91,
+      "Precision": 0.558,
+      "Recall (DR)": 1.0,
+      "F1-Score": 0.716,
+      "FPR": 0.102,
+      "Missed Emergencies": 0,
+      "Avg Latency (ms)": 0.37
+    }
+  ]
+}

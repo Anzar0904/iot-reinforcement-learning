@@ -1,0 +1,222 @@
+{
+  "main": {
+    "id": "a5687e4a9f0be6a7",
+    "type": "split",
+    "children": [
+      {
+        "id": "7b1dac0a9fba14fa",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "dec8862f6f4bc230",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "22e10c09e2975c58",
+    "type": "split",
+    "children": [
+      {
+        "id": "4b28f8a8479024d1",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3d4cb7239691587d",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "bc6d1a24bbc83ce2",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "b6b9b248cf59b0d3",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "6c2f4244d14e3285",
+    "type": "split",
+    "children": [
+      {
+        "id": "0ef0adc02670242e",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "8fb10d7ad2ee39e2",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "bada4cbeefca9241",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "4ecb2fff32c4ccfd",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "2652297356765179",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "273c9382b4e50be7",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "dec8862f6f4bc230",
+  "lastOpenFiles": [
+    "wiki/decisions/2026-11-01-strix-security-hardening-and-benchmark-validation.md",
+    "wiki/concepts/research-benchmark-evaluation-50k.md",
+    "wiki/concepts/strix-security-audit-and-hardening.md",
+    "boards/project-board.md",
+    "Welcome.md",
+    "log.md",
+    "index.md",
+    "AGENTS.md",
+    "Logs/2026-11-01.md",
+    "wiki/decisions/2026-10-31-master-plan-review-and-adoption.md",
+    "wiki/concepts/ui-ux-dashboard-design-specification.md",
+    "wiki/decisions/2026-11-01-final-plan-locked-and-ui-ux-design-transition.md",
+    "wiki/projects/master-architecture-and-synthesis.md",
+    "wiki/decisions/2026-10-31-external-libraries-and-framework-selection.md",
+    "wiki/concepts/deep-rl-threat-response-iotwarden.md",
+    "wiki/concepts/ml-anomaly-detection-pipeline.md",
+    "wiki/concepts/digital-twin-iomt-integration.md",
+    "wiki/concepts/external-repo-evaluations.md",
+    "wiki/logs/2026-10-31-baseline-repo-audit.md",
+    "wiki/concepts/five-pillar-security-architecture.md",
+    "wiki/decisions/2026-10-31-baseline-code-reuse-and-mobile-app-exclusion.md",
+    "wiki/concepts/iot-healthcare-telemetry-simulation.md",
+    "wiki/projects/iot-healthcare-security.md",
+    "_CLAUDE.md",
+    "Logs/2026-10-31.md",
+    "Logs",
+    "boards",
+    "wiki/projects",
+    "wiki/logs",
+    "wiki/entities",
+    "wiki/decisions",
+    "wiki/daily",
+    "wiki/concepts",
+    "wiki",
+    "raw"
+  ]
+}

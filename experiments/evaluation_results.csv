@@ -1,0 +1,4 @@
+Method,Accuracy,Precision,Recall (DR),F1-Score,FPR,Missed Emergencies,Avg Latency (ms)
+Rule-Based (Baseline),0.944,1.0,0.508,0.673,0.0,1301,0.0
+Isolation Forest,0.871,0.446,0.551,0.493,0.088,1187,0.0
+DQN (IoMT-Warden),0.91,0.558,1.0,0.716,0.102,0,0.37

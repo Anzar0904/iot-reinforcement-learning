@@ -1,0 +1,70 @@
+{
+  "model_architecture": "Safe-DQN-IoMT-Warden",
+  "state_dimension": 6,
+  "action_dimension": 5,
+  "actions": {
+    "0": "PASS",
+    "1": "BOOST_SAMPLING",
+    "2": "CLINICAL_ALARM",
+    "3": "RATE_LIMIT_DEVICE",
+    "4": "QUARANTINE_DEVICE"
+  },
+  "total_episodes_trained": 250,
+  "converged": true,
+  "convergence_episode": 180,
+  "final_cumulative_reward": 111.2,
+  "policy_confidence": 0.942,
+  "weights": [
+    [
+      14.9003,
+      8.3766,
+      -3.0,
+      -3.0,
+      33.9644,
+      13.5658
+    ],
+    [
+      16.1701,
+      8.8819,
+      -0.5,
+      -0.5,
+      36.5086,
+      14.8235
+    ],
+    [
+      113.906,
+      62.1351,
+      42.5322,
+      19.0594,
+      -10.2712,
+      65.3618
+    ],
+    [
+      96.3578,
+      11.804,
+      75.823,
+      57.2634,
+      22.3316,
+      8.3327
+    ],
+    [
+      112.2521,
+      5.9483,
+      86.3094,
+      77.1284,
+      16.7816,
+      6.1526
+    ]
+  ],
+  "biases": [
+    9.0329,
+    7.2617,
+    -3.2942,
+    2.4663,
+    0.7763
+  ],
+  "training_time_seconds": 0.04,
+  "timestamp": "2026-10-31T21:18:38Z",
+  "safety_shield_verified": true,
+  "checkpoint_id": "dqn_iomt_v1_295c1f1a26599022"
+}
