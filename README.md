@@ -6,6 +6,7 @@
 [![Framework: Safe RL](https://img.shields.io/badge/Framework-Gymnasium%20%2B%20DQN-blueviolet.svg)](https://gymnasium.farama.org/)
 [![Frontend: React + Motion](https://img.shields.io/badge/UI-React%2019%20%2B%20Motion-61dafb.svg)](https://motion.dev/)
 [![Security: OWASP API Top 10 Hardened](https://img.shields.io/badge/Security-Strix%20Audited-emerald.svg)](https://owasp.org/API-Security/)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Anzar0904/iot-reinforcement-learning/blob/main/IoMT_Warden_Colab.ipynb)
 
 ---
 
