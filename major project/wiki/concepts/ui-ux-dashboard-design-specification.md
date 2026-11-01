@@ -11,7 +11,7 @@ ai-first: true
 ---
 
 ## For future Claude
-This note defines the complete UI/UX design specification for the 6-tab Streamlit dashboard of the IoT Reinforcement Learning system. Use this as the blueprint for building src/iot_reinforcement_learning/dashboard/app.py.
+This note preserves the design specification for the 6-tab Streamlit dashboard and provides the intended UX baseline. The workspace also contains a React dashboard prototype; the current implementation and design are not identical, so treat mock values and proposed tab features as specification rather than live facts.
 
 # UI/UX Dashboard Design Specification
 
@@ -122,3 +122,26 @@ The dashboard serves as the primary visual evaluation interface during the unive
 - [[wiki/decisions/2026-11-01-final-plan-locked-and-ui-ux-design-transition]]
 - [[wiki/decisions/2026-10-31-master-plan-review-and-adoption]]
 - [[wiki/projects/master-architecture-and-synthesis]]
+
+## Implementation Note
+The Streamlit implementation is `iot_reinforcement_learning/dashboard.py`; the React interface is under `web-ui/src/`. Inspect those sources for current UI behavior. Example metric values and “ONLINE” labels in the wireframe are illustrative, not live system guarantees. See [[wiki/projects/iot-healthcare-security]].
+
+## Visual Reference Images
+Generated concept references for visual direction; these are mockups, not screenshots of implemented product behavior:
+- [[ui-references/overview-dashboard]]
+- [[ui-references/patient-vitals]]
+- [[ui-references/security-operations]]
+
+## React Prototype Coverage — 2026-11-01
+The current React prototype was updated and checked locally to show all three patients (P001, P002, P003) in Patient Vitals, the all-patient Digital Twin view, and RL decision records. Digital Twin also supports selecting a single patient. Reports show coverage for all three patient IDs. This describes the current prototype, not the aspirational six-tab Streamlit wireframe above; consult `web-ui/src/App.jsx`, `web-ui/src/app.css`, and `iot_reinforcement_learning/api_bridge.py` for implementation details. Theme changes remain pending the user's direction.
+
+## Hospital-Style Reference Set — 2026-11-01
+The user supplied a light medical-center dashboard image as visual inspiration. Eight coordinated page mockups were generated under `ui-references/`; they are static design references, not implemented UI screenshots. Core patient readings and evaluation results were drawn from the workspace and supplied screenshots, but inspect each mockup's sample chart marks, timestamps, and packet sequence values before reusing them as product data.
+- [[ui-references/dashboard-hospital-style]]
+- [[ui-references/patient-vitals-hospital-style]] — All three patient rows are visible together.
+- [[ui-references/security-integrity-hospital-style]]
+- [[ui-references/ml-anomaly-hospital-style]]
+- [[ui-references/rl-defense-hospital-style]] — Decision table includes P001, P002, and P003.
+- [[ui-references/digital-twin-hospital-style]] — All-patient view includes P001, P002, and P003.
+- [[ui-references/experiments-reports-hospital-style]]
+- [[ui-references/settings-hospital-style]]

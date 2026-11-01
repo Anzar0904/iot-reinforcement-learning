@@ -57,3 +57,6 @@ Adapted from the Protobuf specifications in `digital-twin-playground/proto/digit
 - [[wiki/concepts/external-repo-evaluations]]
 - [[wiki/concepts/five-pillar-security-architecture]]
 - [[wiki/projects/iot-healthcare-security]]
+
+## Current Implementation
+`iot_reinforcement_learning/core.py` implements a per-patient estimator with EWMA state updates, MAD-scaled residuals, MAP/RPP indices, geofence distance, and patient-specific alert thresholds. This is a synthetic simulation component, not a physiologically validated clinical twin. SQLite WAL behavior is documented by SQLite: https://www.sqlite.org/wal.html. See also [[wiki/concepts/research-benchmark-evaluation-50k]].

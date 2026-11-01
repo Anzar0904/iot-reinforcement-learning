@@ -47,16 +47,7 @@ system_state = {
         "trainingStatus": "Converged"
     },
     "rlDecisions": [],
-    "digitalTwin": {
-        "P002": {
-            "map_val": 110.0,
-            "rpp_val": 15876,
-            "discrepancy_score": 0.68,
-            "actual_hr": 126,
-            "predicted_hr": 124,
-            "status": "At Risk"
-        }
-    }
+    "digitalTwin": {}
 }
 
 
@@ -94,6 +85,7 @@ class SimulationWorker(threading.Thread):
                 current_attack = pending_attack
 
             cycle_logs = []
+            cycle_decisions = []
             for pid in self.patients:
                 p_key = f"P00{pid}"
                 is_cardiac_attack = (current_attack == "CARDIAC" and pid == 2)
@@ -165,15 +157,24 @@ class SimulationWorker(threading.Thread):
                         "Rate Limit" if action_str == "RATE_LIMIT" else "Pass"
                     )
                 )
+                cycle_decisions.append({
+                    "time": now_str,
+                    "patient": p_key,
+                    "state": [round(float(value), 2) for value in self.agent.env.state],
+                    "action": action_display
+                })
 
                 # Append Log
                 cycle_logs.append({
                     "time": now_str,
                     "device": f"DEV-00{pid}",
                     "patient": p_key,
+                    "sequence": self.seq,
                     "integrity": ok,
                     "auth": ok,
-                    "status": status_str
+                    "status": status_str,
+                    "reason": reason,
+                    "action": action_str
                 })
 
                 # Persist to SQLite WAL
@@ -199,6 +200,8 @@ class SimulationWorker(threading.Thread):
                         "bp": f"{int(tel.bp_systolic)}/{int(tel.bp_diastolic)}",
                         "spo2": round(tel.spo2, 1),
                         "temp": round(tel.body_temp, 1),
+                        "lat": tel.lat,
+                        "lon": tel.lon,
                         "level": "Emergency" if is_crisis or is_cardiac_attack else ("Warning" if pid == 2 else "Normal")
                     }
                     system_state["anomalies"][p_key] = {
@@ -206,15 +209,15 @@ class SimulationWorker(threading.Thread):
                         "status": "Critical" if norm_score > 0.76 else ("Warning" if norm_score > 0.48 else "Normal")
                     }
 
+                    system_state["digitalTwin"][p_key] = {
+                        "map_val": round(map_val, 1),
+                        "rpp_val": int(rpp_val),
+                        "discrepancy_score": round(disc_score, 2),
+                        "actual_hr": int(tel.heart_rate),
+                        "predicted_hr": int(pred_hr),
+                        "status": "At Risk" if (is_crisis or is_cardiac_attack) else "Synchronized"
+                    }
                     if pid == 2:
-                        system_state["digitalTwin"]["P002"] = {
-                            "map_val": round(map_val, 1),
-                            "rpp_val": int(rpp_val),
-                            "discrepancy_score": round(disc_score, 2),
-                            "actual_hr": int(tel.heart_rate),
-                            "predicted_hr": int(pred_hr),
-                            "status": "At Risk" if (is_crisis or is_cardiac_attack) else "Synchronized"
-                        }
                         system_state["rlAgent"]["currentAction"] = action_display
                         system_state["rlAgent"]["confidence"] = 0.98 if current_attack else 0.92
 
@@ -231,13 +234,7 @@ class SimulationWorker(threading.Thread):
                         system_state["security"]["blocked"] += 1
 
                 system_state["logs"] = (cycle_logs + system_state["logs"])[:15]
-                system_state["rlDecisions"] = ([{
-                    "time": now_str,
-                    "patient": "P002",
-                    "state": f"[{system_state['anomalies']['P002']['score']}, {system_state['digitalTwin']['P002']['discrepancy_score']}, 1, 1, 0.4, 0.8]",
-                    "action": system_state["rlAgent"]["currentAction"],
-                    "reward": "+4.2" if system_state["rlAgent"]["currentAction"] == "Quarantine" else "+1.0"
-                }] + system_state["rlDecisions"])[:8]
+                system_state["rlDecisions"] = (list(reversed(cycle_decisions)) + system_state["rlDecisions"])[:15]
 
 
 class SSEHandler(BaseHTTPRequestHandler):

@@ -79,7 +79,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "right": {
     "id": "6c2f4244d14e3285",
@@ -183,6 +184,20 @@
   },
   "active": "dec8862f6f4bc230",
   "lastOpenFiles": [
+    "ui-references/settings-hospital-style.png",
+    "ui-references/experiments-reports-hospital-style.png",
+    "ui-references/digital-twin-hospital-style.png",
+    "ui-references/rl-defense-hospital-style.png",
+    "ui-references/ml-anomaly-hospital-style.png",
+    "ui-references/security-integrity-hospital-style.png",
+    "ui-references/patient-vitals-hospital-style.png",
+    "ui-references/dashboard-hospital-style.png",
+    "ui-references/overview-dashboard.md",
+    "wiki/concepts/ui-ux-dashboard-design-specification.md",
+    "ui-references/security-operations.png",
+    "ui-references/patient-vitals.png",
+    "ui-references/overview-dashboard.png",
+    "ui-references",
     "wiki/decisions/2026-11-01-strix-security-hardening-and-benchmark-validation.md",
     "wiki/concepts/research-benchmark-evaluation-50k.md",
     "wiki/concepts/strix-security-audit-and-hardening.md",
@@ -193,7 +208,6 @@
     "AGENTS.md",
     "Logs/2026-11-01.md",
     "wiki/decisions/2026-10-31-master-plan-review-and-adoption.md",
-    "wiki/concepts/ui-ux-dashboard-design-specification.md",
     "wiki/decisions/2026-11-01-final-plan-locked-and-ui-ux-design-transition.md",
     "wiki/projects/master-architecture-and-synthesis.md",
     "wiki/decisions/2026-10-31-external-libraries-and-framework-selection.md",
@@ -207,7 +221,6 @@
     "wiki/concepts/iot-healthcare-telemetry-simulation.md",
     "wiki/projects/iot-healthcare-security.md",
     "_CLAUDE.md",
-    "Logs/2026-10-31.md",
     "Logs",
     "boards",
     "wiki/projects",
@@ -216,7 +229,6 @@
     "wiki/decisions",
     "wiki/daily",
     "wiki/concepts",
-    "wiki",
-    "raw"
+    "wiki"
   ]
 }

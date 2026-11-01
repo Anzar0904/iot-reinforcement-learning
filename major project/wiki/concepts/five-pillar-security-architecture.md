@@ -12,7 +12,7 @@ ai-first: true
 ---
 
 ## For future Claude
-This note defines the system architecture and theoretical mapping for the five advanced security extensions planned for the Major Project. It guides how telemetry, cryptographic mechanisms, machine learning models, and reinforcement learning agents interconnect.
+This note defines the system architecture and maps the five security pillars to the current project. It combines intended design with implementation evidence; where a feature remains a proposal, that distinction is called out. See [[wiki/projects/iot-healthcare-security]] for current status.
 
 # Five-Pillar IoMT Security Architecture
 
@@ -86,3 +86,15 @@ This note defines the system architecture and theoretical mapping for the five a
 - [[wiki/projects/iot-healthcare-security]]
 - [[wiki/concepts/iot-healthcare-telemetry-simulation]]
 - [[wiki/decisions/2026-10-31-baseline-code-reuse-and-mobile-app-exclusion]]
+
+## Implementation Status (workspace snapshot, 2026-11-01)
+- **Pillar 1, Digital Twin:** implemented in `iot_reinforcement_learning/core.py` as a per-patient EWMA/MAD estimator with MAP, RPP, and geofence distance outputs.
+- **Pillar 2, anomaly detection:** implemented in `iot_reinforcement_learning/ml_detector.py` using Isolation Forest where available and a fallback path.
+- **Pillar 3, device authentication:** this workspace snapshot does not show mTLS/X.509 certificate provisioning in the active Python pipeline; treat it as a design requirement, not completed capability.
+- **Pillar 4, data integrity:** HMAC-SHA256, freshness, sequence, and replay checks are implemented in `CryptoEngine`. HMAC does not itself provide transport encryption or device PKI.
+- **Pillar 5, threat response:** action selection and a deterministic safety shield are implemented in `iot_reinforcement_learning/rl_defense.py`; evaluate the learned-policy claims separately from the deterministic decision path.
+
+The architecture remains a research prototype over synthetic data. It is not a clinical device or a validated patient-care system. The Python HMAC API recommends constant-time digest comparison: https://docs.python.org/3/library/hmac.html. The DQN component can be compared with the official PyTorch tutorial: https://docs.pytorch.org/tutorials/intermediate/reinforcement_q_learning.html.
+
+### Evaluation interpretation
+The benchmark script labels method 3 “DQN,” but the measured live action path calls `DQNAgent.select_action`, whose implementation uses explicit threshold branches; it does not compute Q-values from the trained checkpoint. The safety shield also participates in the measured action. Therefore, the 50,000-cycle result is evidence about the combined threshold policy and shield under the script's synthetic scenarios, not an isolated evaluation of a learned DQN policy. See [[wiki/concepts/research-benchmark-evaluation-50k]].

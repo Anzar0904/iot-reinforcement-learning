@@ -59,3 +59,6 @@ Adopted directly from `IoTWarden` (`dqn.py` and `agent.py`):
 - [[wiki/concepts/five-pillar-security-architecture]]
 - [[wiki/concepts/ml-anomaly-detection-pipeline]]
 - [[wiki/concepts/digital-twin-iomt-integration]]
+
+## Current Implementation and Evidence
+The active implementation is in `iot_reinforcement_learning/rl_defense.py`; training code and its JSON artifact are in `experiments/train_dqn_offline.py` and `weights/dqn_iomt_warden.json`. The present evaluation action selector uses explicit thresholds and then applies `SafetyShield`; do not treat the benchmark as an isolated learned-DQN result. See [[wiki/concepts/research-benchmark-evaluation-50k]]. DQN design background: https://docs.pytorch.org/tutorials/intermediate/reinforcement_q_learning.html.

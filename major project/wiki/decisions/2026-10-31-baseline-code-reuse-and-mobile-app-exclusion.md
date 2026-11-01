@@ -51,3 +51,6 @@ The project goals require adding five advanced capabilities:
 - [[wiki/projects/iot-healthcare-security]]
 - [[wiki/concepts/iot-healthcare-telemetry-simulation]]
 - [[wiki/concepts/five-pillar-security-architecture]]
+
+## Decision Status
+This records the original 2026-10-31 choice and upstream assessment. The architecture evolved afterward: a Python simulation pipeline and web dashboards were built, while the current implementation snapshot still does not establish mTLS/X.509 as complete. Preserve this note as historical context; consult [[wiki/projects/iot-healthcare-security]] for present status.

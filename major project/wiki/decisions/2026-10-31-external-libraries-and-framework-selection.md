@@ -37,6 +37,9 @@ On 2026-10-31, five external reference repositories were evaluated to design the
 ## Consequences
 - The system achieves full end-to-end integration across all 5 pillars in a single lightweight Python environment without external distributed clustering or non-Python runtimes.
 
+## Status Reconciliation
+This decision describes intended selections. The active code implements some but not all planned pieces: HMAC is present, while this workspace snapshot does not show X.509/mTLS provisioning; the current evaluation policy is threshold based despite DQN training artifacts. See [[wiki/concepts/five-pillar-security-architecture]] and [[wiki/concepts/research-benchmark-evaluation-50k]].
+
 ## Related Notes
 - [[wiki/concepts/external-repo-evaluations]]
 - [[wiki/concepts/five-pillar-security-architecture]]

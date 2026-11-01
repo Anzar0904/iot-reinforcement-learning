@@ -4,6 +4,7 @@ Inverted score convention: a(x) = -decision_function(x).
 Quantile calibration: Q_0.95 (warning), Q_0.995 (critical).
 Stdlib-first: uses scikit-learn IsolationForest if present; otherwise uses robust MAD-Z distance.
 """
+import dataclasses
 import math
 from typing import Dict, List, Optional, Tuple
 

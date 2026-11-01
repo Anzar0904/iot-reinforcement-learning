@@ -51,5 +51,7 @@ Thumbs.db
 # IDEs & Editors
 .vscode/
 .idea/
+.agents/
+.codex/
 *.swp
 *.swo

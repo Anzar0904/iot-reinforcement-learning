@@ -49,6 +49,8 @@ Our system solves these challenges by integrating **real-time clinical telemetry
 
 ---
 
+The repositories in the matrix below are design references; the matrix does not imply verbatim reuse or that every proposed capability is complete.
+
 ## 3. End-to-End System Architecture
 
 ```mermaid
@@ -213,3 +215,9 @@ major/
 - [[wiki/concepts/deep-rl-threat-response-iotwarden]]
 - [[wiki/decisions/2026-10-31-external-libraries-and-framework-selection]]
 - [[boards/project-board]]
+
+## Implementation Reconciliation
+This document captures the intended integrated architecture. The current workspace has a Python pipeline and dashboards, but the source snapshot does not establish mTLS/X.509 provisioning as implemented, and benchmark method 3 uses threshold action selection plus the safety shield. Treat architecture diagrams and action descriptions as target design unless confirmed in source. See [[wiki/projects/iot-healthcare-security]], [[wiki/concepts/five-pillar-security-architecture]], and [[wiki/concepts/research-benchmark-evaluation-50k]].
+
+## Implementation Reconciliation
+This document captures the intended integrated architecture. The current workspace has a Python pipeline and dashboards, but the source snapshot does not establish mTLS/X.509 provisioning as implemented, and benchmark method 3 uses threshold action selection plus the safety shield. Treat architecture diagrams and action descriptions as target design unless confirmed in source. See [[wiki/projects/iot-healthcare-security]], [[wiki/concepts/five-pillar-security-architecture]], and [[wiki/concepts/research-benchmark-evaluation-50k]].

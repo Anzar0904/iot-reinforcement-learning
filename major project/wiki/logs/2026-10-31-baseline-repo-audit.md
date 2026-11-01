@@ -46,3 +46,6 @@ Development log tracking the initial audit of the Divyansh121699/IoT-Based-Healt
 - [[wiki/concepts/iot-healthcare-telemetry-simulation]]
 - [[wiki/concepts/five-pillar-security-architecture]]
 - [[wiki/decisions/2026-10-31-baseline-code-reuse-and-mobile-app-exclusion]]
+
+## Subsequent Project Status
+This is a dated record of the initial audit, not the current project status. The Python implementation, evaluation, dashboards, and later decisions are indexed in [[wiki/projects/iot-healthcare-security]] and [[wiki/concepts/research-benchmark-evaluation-50k]].

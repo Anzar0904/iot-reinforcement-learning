@@ -36,3 +36,6 @@ The user directed that the team now transition directly into the **UI/UX Design 
 - [[wiki/concepts/ui-ux-dashboard-design-specification]]
 - [[boards/project-board]]
 - [[wiki/projects/master-architecture-and-synthesis]]
+
+## Status Update
+This decision preserves the approved plan and transition as of 2026-11-01. Subsequent work produced both a Streamlit dashboard and a React/SSE interface; the active files are `iot_reinforcement_learning/dashboard.py` and `web-ui/src/`. Some wireframe details remain proposals. See [[wiki/concepts/ui-ux-dashboard-design-specification]] and [[wiki/projects/iot-healthcare-security]].

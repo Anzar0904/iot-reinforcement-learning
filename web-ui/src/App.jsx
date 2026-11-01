@@ -26,7 +26,9 @@ import {
   Activity,
   User,
   ShieldAlert,
-  Server
+  Server,
+  Target,
+  Users
 } from 'lucide-react';
 
 // ==========================================
@@ -43,6 +45,8 @@ const INITIAL_PATIENTS = {
     bp: '118/76',
     spo2: 98,
     temp: 36.6,
+    lat: 38.8462,
+    lon: -77.3064,
     color: '#10b981',
     history: [71, 72, 70, 73, 72, 71, 72, 74, 72, 73, 72]
   },
@@ -55,6 +59,8 @@ const INITIAL_PATIENTS = {
     bp: '146/92',
     spo2: 96,
     temp: 37.1,
+    lat: 38.8462,
+    lon: -77.3064,
     color: '#f59e0b',
     history: [118, 120, 122, 124, 125, 128, 127, 126, 129, 131, 126]
   },
@@ -67,7 +73,9 @@ const INITIAL_PATIENTS = {
     bp: '124/80',
     spo2: 97,
     temp: 36.8,
-    color: '#38bdf8',
+    lat: 38.8462,
+    lon: -77.3064,
+    color: '#ef4444',
     history: [76, 77, 79, 78, 80, 78, 77, 79, 78, 80, 78]
   }
 };
@@ -75,13 +83,36 @@ const INITIAL_PATIENTS = {
 export default function App() {
   const [activeTab, setActiveTab] = useState('vitals');
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString('en-US', { hour12: false }));
-  const [selectedTwinPatient, setSelectedTwinPatient] = useState('P002');
+  const [selectedTwinPatient, setSelectedTwinPatient] = useState('all');
   const [attackActive, setAttackActive] = useState(null);
+  const [selectedSecurityLog, setSelectedSecurityLog] = useState(undefined);
+  const [securityDeviceFilter, setSecurityDeviceFilter] = useState('all');
+  const [securityPatientFilter, setSecurityPatientFilter] = useState('all');
   const [isLiveBackend, setIsLiveBackend] = useState(false);
   const [previewFigure, setPreviewFigure] = useState(null);
+  const statRate = (value) => securityStats.total ? ((value / securityStats.total) * 100).toFixed(2) : '0.00';
+
+  const downloadEvaluationCsv = () => {
+    const csv = [
+      'Method,Accuracy,Precision,Recall,F1,FPR,Missed Events,Average Latency (ms)',
+      'Rule-Based,0.944,1.000,0.508,0.673,0.000,1301,0.00',
+      'Isolation Forest,0.871,0.446,0.551,0.493,0.088,1187,0.00',
+      'Threshold Policy + Safety Shield,0.910,0.558,1.000,0.716,0.102,0,0.37'
+    ].join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    link.download = 'synthetic-evaluation-results.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
 
   // Live state
   const [patients, setPatients] = useState(INITIAL_PATIENTS);
+  const [bpHistory, setBpHistory] = useState({ P001: [[118, 76]], P002: [[146, 92]], P003: [[124, 80]] });
+  const [locationHistory, setLocationHistory] = useState([[38.8462, -77.3064]]);
+  const [locationFeedLive, setLocationFeedLive] = useState(false);
+  const [mapLat, mapLon] = locationHistory.at(-1) || [38.8462, -77.3064];
+  const geofenceDistance = locationFeedLive ? Math.round(Math.hypot((mapLat - 38.8462) * 111320, (mapLon + 77.3064) * 86600)) : null;
   const [securityStats, setSecurityStats] = useState({
     total: 12480,
     valid: 12306,
@@ -97,6 +128,12 @@ export default function App() {
     { time: '14:36:08', device: 'DEV-002', patient: 'P002', integrity: false, auth: true, status: 'Tampered' },
     { time: '14:36:05', device: 'DEV-003', patient: 'P003', integrity: true, auth: false, status: 'Replay' }
   ]);
+  const visibleSecurityLogs = messageLogs.filter(log =>
+    (securityDeviceFilter === 'all' || log.device === securityDeviceFilter) &&
+    (securityPatientFilter === 'all' || log.patient === securityPatientFilter)
+  );
+  const securityLogKey = (log) => log.sequence || (log.time + log.device);
+  const activeSecurityLog = selectedSecurityLog === undefined ? visibleSecurityLogs[0] : visibleSecurityLogs.find(log => securityLogKey(log) === selectedSecurityLog);
 
   const [anomalies, setAnomalies] = useState({
     P001: { score: 0.08, status: 'Normal' },
@@ -114,12 +151,14 @@ export default function App() {
     totalEpisodes: 250,
     trainingStatus: 'Converged'
   });
+  const [digitalTwins, setDigitalTwins] = useState({});
+  const [settingsConfig, setSettingsConfig] = useState({ safety: 'Deterministic Override (Non-Bypassable)', ewma: '0.35', contamination: '0.05', secret: 'sha256:****************' });
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   const [rlDecisions, setRlDecisions] = useState([
-    { time: '14:36:17', patient: 'P002', state: '[0.72, 0.68, 1, 1, 0.41, 0.78]', action: 'Quarantine', reward: '+4.2' },
-    { time: '14:35:56', patient: 'P002', state: '[0.69, 0.63, 1, 1, 0.38, 0.76]', action: 'Alarm', reward: '+2.5' },
-    { time: '14:34:40', patient: 'P003', state: '[0.12, 0.09, 1, 1, 0.12, 0.33]', action: 'Pass', reward: '+1.0' },
-    { time: '14:33:21', patient: 'P001', state: '[0.08, 0.07, 1, 1, 0.10, 0.21]', action: 'Pass', reward: '+1.0' }
+    { time: '14:36:17', patient: 'P003', state: '[0.12, 0.09, 1, 1, 0.12, 0.33]', action: 'Pass' },
+    { time: '14:36:15', patient: 'P002', state: '[0.72, 0.68, 1, 1, 0.41, 0.78]', action: 'Quarantine' },
+    { time: '14:36:12', patient: 'P001', state: '[0.08, 0.07, 1, 1, 0.10, 0.21]', action: 'Pass' }
   ]);
 
   // Live timer & Python SSE Stream listener
@@ -133,11 +172,28 @@ export default function App() {
     try {
       es = new EventSource('http://localhost:8000/events');
       es.onopen = () => setIsLiveBackend(true);
-      es.onerror = () => setIsLiveBackend(false);
+      es.onerror = () => {
+        setIsLiveBackend(false);
+        setLocationFeedLive(false);
+      };
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.patients) {
+            const p3 = data.patients.P003;
+            if (p3?.lat != null && p3?.lon != null) {
+              setLocationFeedLive(true);
+              setLocationHistory(path => [...path.slice(-29), [p3.lat, p3.lon]]);
+            }
+            setBpHistory(history => {
+              const next = { ...history };
+              Object.entries(data.patients).forEach(([id, p]) => {
+                if (!p.bp) return;
+                const [sys, dia] = p.bp.split('/').map(Number);
+                next[id] = [...(history[id] || []), [sys, dia]].slice(-20);
+              });
+              return next;
+            });
             setPatients(prev => {
               const next = { ...prev };
               Object.keys(data.patients).forEach(k => {
@@ -155,6 +211,7 @@ export default function App() {
           if (data.anomalies) setAnomalies(data.anomalies);
           if (data.rlAgent) setRlAgentState(data.rlAgent);
           if (data.rlDecisions && data.rlDecisions.length > 0) setRlDecisions(data.rlDecisions);
+          if (data.digitalTwin) setDigitalTwins(data.digitalTwin);
         } catch (err) {
           console.error("SSE parse error", err);
         }
@@ -204,38 +261,38 @@ export default function App() {
   ];
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#090d16', color: '#f3f4f6', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className={'app-shell ' + (activeTab === 'dashboard' ? 'dashboard-view' : '')} style={{ display: 'flex', minHeight: '100vh', background: '#f2f3f5', color: '#101828', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
       {/* ========================================== */}
       {/* LEFT SIDEBAR */}
       {/* ========================================== */}
-      <aside style={{
+      <aside className="app-sidebar" style={{
         width: 260,
-        background: '#0d111d',
-        borderRight: '1px solid #1a2234',
+        background: '#fafafa',
+        borderRight: '1px solid #e4e6e9',
         display: 'flex',
         flexDirection: 'column',
         padding: '20px 14px'
       }}>
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 24px 8px', borderBottom: '1px solid #1a2234' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 8px 24px 8px', borderBottom: '1px solid #e4e6e9' }}>
           <div style={{
             width: 38,
             height: 38,
-            borderRadius: 10,
-            background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+            borderRadius: 7,
+            background: '#eff6ff',
+            border: '1px solid #dbeafe',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)'
           }}>
-            <Bot size={22} color="#ffffff" />
+            <ShieldCheck size={22} color="#2563eb" />
           </div>
           <div>
             <div style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-0.02em', color: '#ffffff' }}>
-              IoMT-Warden
+              IoT Reinforcement Learning
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+            <div style={{ fontSize: '0.72rem', color: '#667085', fontWeight: 500 }}>
               Secure IoMT Monitoring
             </div>
           </div>
@@ -247,40 +304,48 @@ export default function App() {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
-              <button
+              <motion.button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
+                whileTap={{ scale: 0.985 }}
                 style={{
+                  position: 'relative',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
                   padding: '10px 14px',
-                  borderRadius: 8,
+                  borderRadius: 6,
                   fontSize: '0.85rem',
                   fontWeight: isActive ? 600 : 500,
-                  color: isActive ? '#ffffff' : '#94a3b8',
-                  background: isActive ? 'linear-gradient(90deg, rgba(79, 70, 229, 0.25) 0%, rgba(59, 130, 246, 0.15) 100%)' : 'transparent',
-                  border: isActive ? '1px solid rgba(99, 102, 241, 0.4)' : '1px solid transparent',
+                  color: isActive ? '#ffffff' : '#667085',
+                  background: 'transparent',
+                  border: '1px solid transparent',
                   cursor: 'pointer',
                   textAlign: 'left',
-                  transition: 'all 0.15s ease'
+                  transition: 'color 0.15s ease'
                 }}
+                aria-current={isActive ? 'page' : undefined}
               >
-                <Icon size={18} color={isActive ? '#818cf8' : '#64748b'} />
-                <span>{item.label}</span>
-              </button>
+                {isActive && <motion.span
+                  layoutId="active-navigation-item"
+                  className="sidebar-nav-indicator"
+                  transition={{ type: 'spring', stiffness: 480, damping: 38 }}
+                />}
+                <Icon size={18} color={isActive ? '#2563eb' : '#667085'} style={{ position: 'relative', zIndex: 1 }} />
+                <span style={{ position: 'relative', zIndex: 1 }}>{item.label}</span>
+              </motion.button>
             );
           })}
         </nav>
 
         {/* Attack Injector Quick bar */}
         <div style={{
-          background: '#131b2e',
+          background: '#f8f9fb',
           borderRadius: 10,
           padding: 12,
-          border: '1px solid #1e293b'
+          border: '1px solid #f8f9fb'
         }}>
-          <div style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: '0.72rem', color: '#667085', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
             <Zap size={13} color="#f59e0b" /> Attack Simulation
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
@@ -290,7 +355,7 @@ export default function App() {
                 fontSize: '0.7rem',
                 padding: '6px',
                 borderRadius: 6,
-                background: attackActive === 'TAMPER' ? '#7f1d1d' : '#1e293b',
+                background: attackActive === 'TAMPER' ? '#7f1d1d' : '#f8f9fb',
                 color: '#f87171',
                 border: '1px solid #ef4444',
                 cursor: 'pointer',
@@ -305,9 +370,9 @@ export default function App() {
                 fontSize: '0.7rem',
                 padding: '6px',
                 borderRadius: 6,
-                background: attackActive === 'REPLAY' ? '#581c87' : '#1e293b',
-                color: '#c084fc',
-                border: '1px solid #a855f7',
+                background: attackActive === 'REPLAY' ? '#563b16' : '#f8f9fb',
+                color: '#fbbf24',
+                border: '1px solid #a8791c',
                 cursor: 'pointer',
                 fontWeight: 600
               }}
@@ -320,7 +385,7 @@ export default function App() {
                 fontSize: '0.7rem',
                 padding: '6px',
                 borderRadius: 6,
-                background: attackActive === 'CARDIAC' ? '#7f1d1d' : '#1e293b',
+                background: attackActive === 'CARDIAC' ? '#7f1d1d' : '#f8f9fb',
                 color: '#fbbf24',
                 border: '1px solid #f59e0b',
                 cursor: 'pointer',
@@ -355,13 +420,13 @@ export default function App() {
       {/* ========================================== */}
       {/* MAIN CONTENT AREA */}
       {/* ========================================== */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <main className="app-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         
         {/* TOP STATUS HEADER BAR */}
-        <header style={{
+        <header className="app-header" style={{
           height: 64,
-          background: '#0d111d',
-          borderBottom: '1px solid #1a2234',
+          background: '#fafafa',
+          borderBottom: '1px solid #e4e6e9',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -369,16 +434,16 @@ export default function App() {
         }}>
           <div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 700, letterSpacing: '-0.01em', margin: 0 }}>
-              {activeTab === 'dashboard' && 'IoMT-Warden Executive Dashboard'}
+              {activeTab === 'dashboard' && 'IoT Reinforcement Learning Overview'}
               {activeTab === 'vitals' && 'Live Patient Vitals'}
               {activeTab === 'security' && 'Security & Integrity'}
               {activeTab === 'anomaly' && 'ML Anomaly Detection'}
-              {activeTab === 'rl' && 'RL Defense Agent (IoMT-Warden)'}
+              {activeTab === 'rl' && 'RL Defense Agent'}
               {activeTab === 'twin' && 'Patient Digital Twin'}
               {activeTab === 'reports' && 'Experiments & Reports'}
-              {activeTab === 'settings' && 'System Configuration & Parameters'}
+              {activeTab === 'settings' && 'Settings'}
             </h2>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
+            <div style={{ fontSize: '0.75rem', color: '#667085', marginTop: 2 }}>
               {activeTab === 'vitals' && 'Real-time physiological data from IoMT devices'}
               {activeTab === 'security' && 'Authentication, data integrity, and anti-replay verification'}
               {activeTab === 'anomaly' && 'Unsupervised anomaly detection using Isolation Forest with adaptive thresholds'}
@@ -386,7 +451,7 @@ export default function App() {
               {activeTab === 'twin' && 'Virtual physiological model, MAP/RPP computation, and discrepancy analysis'}
               {activeTab === 'reports' && 'Model evaluation, security testing, and automatic report generation'}
               {activeTab === 'dashboard' && 'Integrated multi-tier IoMT defense telemetry mirror'}
-              {activeTab === 'settings' && 'Safety Shield thresholds, EWMA parameters, and cryptographic keys'}
+              {activeTab === 'settings' && 'System Configuration & Parameters'}
             </div>
           </div>
 
@@ -398,7 +463,7 @@ export default function App() {
               gap: 6,
               background: isLiveBackend ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
               border: `1px solid ${isLiveBackend ? 'rgba(16, 185, 129, 0.4)' : 'rgba(59, 130, 246, 0.4)'}`,
-              color: isLiveBackend ? '#34d399' : '#60a5fa',
+              color: isLiveBackend ? '#34d399' : '#2563eb',
               padding: '4px 10px',
               borderRadius: 20,
               fontSize: '0.75rem',
@@ -414,88 +479,27 @@ export default function App() {
               gap: 6,
               background: 'rgba(56, 189, 248, 0.1)',
               border: '1px solid rgba(56, 189, 248, 0.3)',
-              color: '#38bdf8',
+              color: '#2563eb',
               padding: '4px 10px',
               borderRadius: 20,
               fontSize: '0.75rem',
               fontWeight: 600
             }}>
               <Wifi size={13} />
-              MQTT (TLS) Connected
+              Synthetic Simulation
             </div>
 
-            <div style={{ color: '#94a3b8', fontSize: '0.78rem', fontFamily: 'monospace' }}>
-              Thu, Jan 23, 2025 {currentTime}
+            <div style={{ color: '#667085', fontSize: '0.78rem', fontFamily: 'monospace' }}>
+              {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} {currentTime}
             </div>
-
-            {activeTab === 'vitals' && (
-              <div style={{
-                background: '#4338ca',
-                color: '#ffffff',
-                padding: '4px 12px',
-                borderRadius: 6,
-                fontSize: '0.75rem',
-                fontWeight: 600
-              }}>
-                Live (5s)
-              </div>
-            )}
-
-            {activeTab === 'security' && (
-              <div style={{
-                background: '#1e293b',
-                color: '#cbd5e1',
-                padding: '4px 12px',
-                borderRadius: 6,
-                fontSize: '0.75rem',
-                border: '1px solid #334155'
-              }}>
-                Last 30 Minutes ▾
-              </div>
-            )}
-
-            {activeTab === 'twin' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <select
-                  value={selectedTwinPatient}
-                  onChange={(e) => setSelectedTwinPatient(e.target.value)}
-                  style={{
-                    background: '#1e293b',
-                    color: '#f8fafc',
-                    border: '1px solid #334155',
-                    borderRadius: 6,
-                    padding: '4px 10px',
-                    fontSize: '0.75rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="P001">Patient: P001 – Healthy</option>
-                  <option value="P002">Patient: P002 – Cardiac</option>
-                  <option value="P003">Patient: P003 – Alzheimer</option>
-                </select>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  color: '#34d399',
-                  padding: '4px 8px',
-                  borderRadius: 6,
-                  fontSize: '0.72rem',
-                  fontWeight: 600
-                }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }}></span> Live
-                </div>
-              </div>
-            )}
 
             {activeTab === 'reports' && (
-              <button
+              <button onClick={downloadEvaluationCsv}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  background: '#4f46e5',
+                  background: '#2563eb',
                   color: '#fff',
                   border: 'none',
                   padding: '6px 12px',
@@ -512,7 +516,7 @@ export default function App() {
         </header>
 
         {/* VIEW CONTAINER */}
-        <div style={{ padding: 24, flex: 1 }}>
+        <div className="view-container" style={{ padding: 24, flex: 1 }}>
           <AnimatePresence mode="wait">
             
             {/* ========================================== */}
@@ -520,115 +524,44 @@ export default function App() {
             {/* ========================================== */}
             {(activeTab === 'vitals' || activeTab === 'dashboard') && (
               <motion.div
-                key="vitals-view"
-                initial={{ opacity: 0, y: 10 }}
+                key={activeTab === 'dashboard' ? 'dashboard-view' : 'vitals-view'}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
               >
-                {/* 3 Patient Cards Row */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-                  {Object.values(patients).map(patient => (
-                    <div
-                      key={patient.id}
-                      style={{
-                        background: '#111827',
-                        border: '1px solid #1f293d',
-                        borderRadius: 12,
-                        padding: 16
-                      }}
-                    >
-                      {/* Patient Card Top */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: '50%',
-                            background: `${patient.color}20`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}>
-                            <User size={16} color={patient.color} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f8fafc' }}>
-                              {patient.name}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                              {patient.status}
-                            </div>
-                          </div>
-                        </div>
+                {activeTab === 'dashboard' && (
+                  <div className="overview-kpis">
+                    {[
+                      { label: 'Active devices', value: '3 / 3', note: 'Synthetic patient nodes', tone: 'blue', icon: <Wifi size={20}/> },
+                      { label: 'Frames observed', value: securityStats.total.toLocaleString(), note: 'Across all devices', tone: 'green', icon: <Server size={20}/> },
+                      { label: 'Rejected frames', value: (securityStats.tampered + securityStats.replay).toLocaleString(), note: 'Integrity and replay checks', tone: 'red', icon: <ShieldAlert size={20}/> },
+                      { label: 'Benchmark latency', value: '0.37 ms', note: 'Recorded synthetic evaluation', tone: 'purple', icon: <Clock size={20}/> }
+                    ].map((card, index) => <div className={'overview-kpi ' + card.tone} key={card.label}><div className="overview-kpi-top"><span className="overview-icon">{card.icon}</span><div><span>{card.label}</span><strong>{card.value}</strong></div></div><small>{card.note}</small><div className={'overview-spark spark-' + index} aria-hidden="true">{[2,3,2,4,2,3,5,3,2,4,6,3,5,7,4,8,6,10,8,12].map((h,i)=><i key={i} style={{height: `${h * 2}px`}}/>)}</div></div>)}
+                  </div>
+                )}
+                {/* Patient status overview */}
+                <section className="patient-monitor">
+                  <div className="patient-monitor-head"><h3><Users size={20}/>{activeTab === 'dashboard' ? 'All Patient Monitoring' : 'All Patient Vitals'}</h3><span>{isLiveBackend ? 'Live telemetry' : 'Simulation data'} · {Object.keys(patients).length} devices</span></div>
+                  <div className="patient-monitor-scroll"><table className="patient-monitor-table">
+                    <thead><tr><th>Patient ID</th><th>Status</th><th>Activity</th><th>Heart Rate (bpm)</th><th>Blood Pressure (mmHg)</th><th>SpO₂ (%)</th><th>Temperature (°C)</th></tr></thead>
+                    <tbody>{Object.values(patients).map((patient, index) => <motion.tr key={patient.id} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, delay: index * 0.045, ease: [0.16, 1, 0.3, 1] }}>
+                      <td><strong>{patient.id}</strong></td>
+                      <td><span className={'patient-level patient-status-'+patient.id}><i/>{patient.name.split('–')[1]?.trim()}</span></td>
+                      <td><span className={'activity-pill activity-' + patient.id}>{patient.status}</span></td>
+                      <td>{patient.hr}<small>bpm</small></td><td>{patient.bp}<small>mmHg</small></td><td>{patient.spo2}<small>%</small></td><td>{patient.temp}<small>°C</small></td>
+                    </motion.tr>)}</tbody>
+                  </table></div>
+                </section>
 
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: 6,
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          background: patient.level === 'Normal' ? 'rgba(16, 185, 129, 0.15)' : patient.level === 'Warning' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                          color: patient.level === 'Normal' ? '#34d399' : patient.level === 'Warning' ? '#fbbf24' : '#f87171'
-                        }}>
-                          {patient.level}
-                        </span>
-                      </div>
 
-                      {/* Patient 4 Metrics Grid */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                        {/* HR */}
-                        <div style={{ background: '#0d131f', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-                            <HeartPulse size={11} color="#f43f5e" /> HR
-                          </div>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 800, marginTop: 2, color: '#f8fafc' }}>
-                            {patient.hr}
-                          </div>
-                          <div style={{ fontSize: '0.62rem', color: '#64748b' }}>bpm</div>
-                        </div>
 
-                        {/* BP */}
-                        <div style={{ background: '#0d131f', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-                            <Activity size={11} color="#38bdf8" /> BP
-                          </div>
-                          <div style={{ fontSize: '0.88rem', fontWeight: 800, marginTop: 4, color: '#f8fafc' }}>
-                            {patient.bp}
-                          </div>
-                          <div style={{ fontSize: '0.62rem', color: '#64748b' }}>mmHg</div>
-                        </div>
-
-                        {/* SpO2 */}
-                        <div style={{ background: '#0d131f', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-                            <Zap size={11} color="#10b981" /> SpO₂
-                          </div>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 800, marginTop: 2, color: '#f8fafc' }}>
-                            {patient.spo2}
-                          </div>
-                          <div style={{ fontSize: '0.62rem', color: '#64748b' }}>%</div>
-                        </div>
-
-                        {/* Temp */}
-                        <div style={{ background: '#0d131f', padding: '8px 10px', borderRadius: 8, textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-                            <Activity size={11} color="#fbbf24" /> Temp
-                          </div>
-                          <div style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: 3, color: '#f8fafc' }}>
-                            {patient.temp}
-                          </div>
-                          <div style={{ fontSize: '0.62rem', color: '#64748b' }}>°C</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
+                <div className="vitals-layout">
                 {/* Big Chart: Heart Rate (Last 5 Minutes) */}
-                <div style={{
-                  background: '#111827',
-                  border: '1px solid #1f293d',
+                <div className="vitals-main-chart" style={{
+                  background: '#ffffff',
+                  border: '1px solid #e4e6e9',
                   borderRadius: 12,
                   padding: 20
                 }}>
@@ -641,8 +574,8 @@ export default function App() {
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#f59e0b' }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }}></span> P002 (Cardiac)
                       </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#38bdf8' }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#38bdf8' }}></span> P003 (Alzheimer)
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#2563eb' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#2563eb' }}></span> P003 (Alzheimer)
                       </span>
                     </div>
                   </div>
@@ -655,22 +588,22 @@ export default function App() {
                         const y = 200 - ((val - 50) / 110) * 180 - 10;
                         return (
                           <g key={val}>
-                            <line x1="50" y1={y} x2="880" y2={y} stroke="#1f293d" strokeDasharray="3 3" />
-                            <text x="35" y={y + 4} fill="#64748b" fontSize="10" textAnchor="end">{val}</text>
+                            <line x1="50" y1={y} x2="880" y2={y} stroke="#e4e6e9" strokeDasharray="3 3" />
+                            <text x="35" y={y + 4} fill="#667085" fontSize="10" textAnchor="end">{val}</text>
                           </g>
                         );
                       })}
 
                       {/* Time X axis */}
                       {['14:31', '14:32', '14:33', '14:34', '14:35', '14:36'].map((t, idx) => (
-                        <text key={t} x={50 + idx * 166} y="195" fill="#64748b" fontSize="10" textAnchor="middle">{t}</text>
+                        <text key={t} x={50 + idx * 166} y="195" fill="#667085" fontSize="10" textAnchor="middle">{t}</text>
                       ))}
 
                       {/* Y-axis label */}
-                      <text x="-100" y="15" fill="#64748b" fontSize="10" transform="rotate(-90)" textAnchor="middle">HR (bpm)</text>
+                      <text x="-100" y="15" fill="#667085" fontSize="10" transform="rotate(-90)" textAnchor="middle">HR (bpm)</text>
 
                       {/* Render lines for P001, P002, P003 */}
-                      {Object.values(patients).map((p) => {
+                      {Object.values(patients).map((p, index) => {
                         const points = p.history.map((val, i) => {
                           const x = 50 + (i / (p.history.length - 1)) * 830;
                           const y = 200 - ((val - 50) / 110) * 180 - 10;
@@ -684,7 +617,9 @@ export default function App() {
                               stroke={p.color}
                               strokeWidth="2.5"
                               points={points}
-                              transition={{ duration: 0.5 }}
+                              initial={{ pathLength: 0, opacity: 0.35 }}
+                              animate={{ pathLength: 1, opacity: 1 }}
+                              transition={{ duration: 0.7, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
                             />
                             {/* Points */}
                             {p.history.map((val, i) => {
@@ -698,227 +633,83 @@ export default function App() {
                     </svg>
                   </div>
                 </div>
-              </motion.div>
-            )}
-
-            {/* ========================================== */}
-            {/* VIEW 2: SECURITY & INTEGRITY */}
-            {/* ========================================== */}
-            {activeTab === 'security' && (
-              <motion.div
-                key="security-view"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
-              >
-                {/* 5 KPI Stat Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
-                  {/* Total Messages */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Radio size={16} color="#38bdf8" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Total Messages</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2 }}>{securityStats.total.toLocaleString()}</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Valid */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <CheckCircle2 size={16} color="#10b981" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Valid</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#34d399' }}>
-                          {securityStats.valid.toLocaleString()} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#6ee7b7' }}>(98.6%)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Tampered */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <ShieldAlert size={16} color="#ef4444" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Tampered</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#f87171' }}>
-                          {securityStats.tampered} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#fca5a5' }}>(0.69%)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Replay */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(168, 85, 247, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <RotateCcw size={16} color="#a855f7" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Replay</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#c084fc' }}>
-                          {securityStats.replay} <span style={{ fontSize: '0.7rem', fontWeight: 500, color: '#d8b4fe' }}>(0.07%)</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Blocked Devices */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Lock size={16} color="#f59e0b" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Blocked Devices</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#fbbf24' }}>
-                          {securityStats.blocked}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bottom Row: Message Verification Table + Donut Chart */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: 16 }}>
-                  {/* Table */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18 }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 14 }}>Message Verification (Live)</div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                      <thead>
-                        <tr style={{ color: '#64748b', borderBottom: '1px solid #1f293d', textAlign: 'left' }}>
-                          <th style={{ padding: '8px 6px' }}>Time</th>
-                          <th style={{ padding: '8px 6px' }}>Device ID</th>
-                          <th style={{ padding: '8px 6px' }}>Patient ID</th>
-                          <th style={{ padding: '8px 6px' }}>Integrity</th>
-                          <th style={{ padding: '8px 6px' }}>Auth</th>
-                          <th style={{ padding: '8px 6px' }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {messageLogs.map((log, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid #161e2e' }}>
-                            <td style={{ padding: '10px 6px', fontFamily: 'monospace', color: '#94a3b8' }}>{log.time}</td>
-                            <td style={{ padding: '10px 6px', color: '#cbd5e1' }}>{log.device}</td>
-                            <td style={{ padding: '10px 6px', color: '#38bdf8' }}>{log.patient}</td>
-                            <td style={{ padding: '10px 6px' }}>
-                              {log.integrity ? <CheckCircle2 size={15} color="#10b981" /> : <XCircle size={15} color="#ef4444" />}
-                            </td>
-                            <td style={{ padding: '10px 6px' }}>
-                              {log.auth ? <CheckCircle2 size={15} color="#10b981" /> : <XCircle size={15} color="#ef4444" />}
-                            </td>
-                            <td style={{ padding: '10px 6px' }}>
-                              <span style={{
-                                padding: '3px 8px',
-                                borderRadius: 4,
-                                fontSize: '0.7rem',
-                                fontWeight: 700,
-                                background: log.status === 'Valid' ? 'rgba(16, 185, 129, 0.15)' : log.status === 'Tampered' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(168, 85, 247, 0.15)',
-                                color: log.status === 'Valid' ? '#34d399' : log.status === 'Tampered' ? '#f87171' : '#c084fc'
-                              }}>
-                                {log.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Donut Chart: Security Events (30 min) */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 14 }}>Security Events (30 min)</div>
-                    
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 20 }}>
-                      <div style={{ position: 'relative', width: 150, height: 150 }}>
-                        <svg viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
-                          {/* Valid ring: 98.6% */}
-                          <circle cx="50" cy="50" r="40" stroke="#1e293b" strokeWidth="12" fill="none" />
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            stroke="#10b981"
-                            strokeWidth="12"
-                            strokeDasharray="248 251"
-                            strokeDashoffset="0"
-                            fill="none"
-                            strokeLinecap="round"
-                          />
-                          {/* Tampered: 0.69% */}
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            stroke="#ef4444"
-                            strokeWidth="12"
-                            strokeDasharray="4 251"
-                            strokeDashoffset="-246"
-                            fill="none"
-                          />
-                          {/* Replay: 0.07% */}
-                          <circle
-                            cx="50"
-                            cy="50"
-                            r="40"
-                            stroke="#a855f7"
-                            strokeWidth="12"
-                            strokeDasharray="2 251"
-                            strokeDashoffset="-250"
-                            fill="none"
-                          />
-                        </svg>
-                        <div style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          height: '100%',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          textAlign: 'center'
-                        }}>
-                          <div style={{ fontSize: '1rem', fontWeight: 800 }}>12,480</div>
-                          <div style={{ fontSize: '0.65rem', color: '#64748b' }}>Messages</div>
-                        </div>
-                      </div>
-
-                      {/* Legend */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.75rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }}></span>
-                          <span>Valid – 98.6%</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }}></span>
-                          <span>Tampered – 0.69%</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#a855f7' }}></span>
-                          <span>Replay – 0.07%</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b' }}></span>
-                          <span>Blocked – 0.01%</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <section className="vitals-map-card" style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
+                  <div className="vitals-panel-heading"><div><div style={{ fontWeight: 700 }}>Location &amp; Geofence (P003)</div><div style={{ color: '#667085', fontSize: '.72rem', marginTop: 4 }}>{locationFeedLive ? 'Synthetic patient movement · ' + geofenceDistance + ' m from anchor' : 'Waiting for live coordinate feed'}</div></div><span className={geofenceDistance > 30 ? 'geofence-badge alert' : 'geofence-badge'}>{geofenceDistance == null ? 'Feed unavailable' : geofenceDistance > 30 ? 'Boundary alert' : 'Inside boundary'}</span></div>
+                  <svg viewBox="0 0 420 245" role="img" aria-label="P003 simulated location and 30 metre safety boundary" className="geofence-map">
+                    <rect width="420" height="245" rx="12" fill="#f8faff"/>
+                    <circle cx="210" cy="122" r="76" fill="#f1f4ff" stroke="#7b9cff" strokeWidth="2" strokeDasharray="7 6"/>
+                    <path d={locationHistory.map(([lat, lon], i) => {
+                      const x = Math.max(30, Math.min(390, 210 + (lon + 77.3064) * 86600 * 2.1));
+                      const y = Math.max(28, Math.min(220, 122 - (lat - 38.8462) * 111320 * 2.1));
+                      return (i ? 'L' : 'M') + x + ',' + y;
+                    }).join(' ')} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinecap="round"/>
+                    <text x="210" y="173" textAnchor="middle" fill="#101828" fontSize="13" fontWeight="600">P003</text>
+                    {(() => { const [lat, lon] = locationFeedLive ? locationHistory.at(-1) : [38.8462, -77.3064]; const x = Math.max(30, Math.min(390, 210 + (lon + 77.3064) * 86600 * 2.1)); const y = Math.max(28, Math.min(220, 122 - (lat - 38.8462) * 111320 * 2.1)); return <g><circle cx={x} cy={y} r="9" fill="#ef4444" stroke="#fff" strokeWidth="4"/><circle cx={x} cy={y} r="17" fill="none" stroke="#ef4444" opacity=".25"/></g>; })()}
+                  </svg>
+                  <div className="map-legend"><span><i className="dot-blue"/> Patient P003</span><span><i className="line-blue"/> Path</span><span><i className="line-dash"/> 30 m boundary</span></div>
+                </section>
+                <section className="vitals-bp-card" style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
+                  <div className="vitals-panel-heading"><div><div style={{ fontWeight: 700 }}>Blood Pressure Trends</div><div style={{ color: '#667085', fontSize: '.72rem', marginTop: 4 }}>Latest readings · mmHg</div></div><span className="bp-current">{patients[selectedTwinPatient]?.bp || patients.P002.bp}</span></div>
+                  <svg viewBox="0 0 600 180" className="bp-chart" role="img" aria-label="Live blood pressure readings">
+                    {[40, 80, 120, 160].map(v => <g key={v}><line x1="42" y1={170 - v * .8} x2="590" y2={170 - v * .8} stroke="#263342" strokeDasharray="3 5"/><text x="30" y={174 - v * .8} fill="#667085" fontSize="10" textAnchor="end">{v}</text></g>)}
+                    {['P001','P002','P003'].map(id => { const values=bpHistory[id] || []; const color=patients[id].color; const points=values.map((v,i)=>(48+i*(532/Math.max(1,values.length-1)))+','+(170-v[0]*.8)).join(' '); return <polyline key={id} points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>; })}
+                    <text x="48" y="178" fill="#667085" fontSize="10">Recent samples</text><text x="590" y="178" fill="#667085" fontSize="10" textAnchor="end">Now</text>
+                  </svg>
+                  <div className="map-legend">{Object.values(patients).map(p => <span key={p.id}><i className="dot" style={{ background: p.color }}/>{p.id} · {p.bp}</span>)}</div>
+                </section>
+                <section className="vitals-events-card" style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
+                  <div className="vitals-panel-heading"><div><div style={{ fontWeight: 700 }}>Recent Security Events</div><div style={{ color: '#667085', fontSize: '.72rem', marginTop: 4 }}>Latest simulated packet checks</div></div><button className="text-button" onClick={() => setActiveTab('security')}>View all</button></div>
+                  <div className="event-list">{messageLogs.slice(0, 5).map((log, i) => <div className="event-row" key={log.time + log.device + i}><i className={log.status === 'Valid' ? 'dot-green' : 'dot-red'}/><span className="event-time">{log.time}</span><span className="event-description">{log.patient} · {log.status === 'Valid' ? 'Frame verified' : log.status + ' frame blocked'}</span><span className={'event-status ' + (log.status === 'Valid' ? 'status-valid' : 'status-alert')}>{log.status}</span></div>)}</div>
+                </section>
                 </div>
               </motion.div>
             )}
+
+            {/* VIEW 2: SECURITY */}
+            {activeTab === 'security' && <motion.div key="security-view" className="security-page" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-4}} transition={{duration:0.22,ease:[0.16,1,0.3,1]}}>
+              <div className="security-titlebar">
+                <div className="security-heading"><ShieldCheck size={38}/><div><h1>Security &amp; Integrity</h1><p>Live packet audit and message authentication monitor for IoT devices</p></div></div>
+                <div className="security-actions"><button className="attack-tamper" onClick={()=>triggerAttack('TAMPER')}><Zap size={16}/>Inject HMAC Tamper</button><button className="attack-replay" onClick={()=>triggerAttack('REPLAY')}><RotateCcw size={16}/>Inject Replay</button><button className="attack-reset" onClick={clearAttack}><RotateCcw size={16}/>Reset Simulation</button></div>
+              </div>
+              <div className="security-metrics">
+                {[
+                  ['Frames observed', securityStats.total.toLocaleString(), 'blue'],
+                  ['Valid', securityStats.valid.toLocaleString(), 'green'],
+                  ['Tampered', securityStats.tampered.toLocaleString(), 'red'],
+                  ['Replay attempts', securityStats.replay.toLocaleString(), 'amber'],
+                  ['Unauthorized / blocked', securityStats.blocked.toLocaleString(), 'red']
+                ].map(([label,value,tone])=><div className={'security-metric-card '+tone} key={label}><span>{label}</span><strong>{value}</strong><div className="metric-dots">{Array.from({length:18},(_,i)=><i key={i} style={{height:`${5+(i%7)*3}px`}}/>)}</div></div>)}
+              </div>
+              <div className="security-main-grid">
+                <section className="security-panel security-audit">
+                  <div className="security-panel-heading"><div className="security-audit-title"><h2>Live Packet Audit</h2><span className="stream-state"><i/>{isLiveBackend?'Streaming live':'Simulation standby'}</span><span className="audit-count">{visibleSecurityLogs.length} packets (latest)</span></div><div className="security-filters">
+                    <select aria-label="Filter by device" value={securityDeviceFilter} onChange={e=>setSecurityDeviceFilter(e.target.value)}><option value="all">All Devices</option>{[...new Set(messageLogs.map(x=>x.device))].map(x=><option key={x}>{x}</option>)}</select>
+                    <select aria-label="Filter by patient" value={securityPatientFilter} onChange={e=>setSecurityPatientFilter(e.target.value)}><option value="all">All Patients</option>{[...new Set(messageLogs.map(x=>x.patient))].map(x=><option key={x}>{x}</option>)}</select>
+                  </div></div>
+                  <div className="security-table-wrap"><table className="security-table"><thead><tr><th>Timestamp</th><th>Device</th><th>Patient</th><th>Sequence</th><th>HMAC Status</th><th>Replay Check</th><th>Gateway Action</th></tr></thead><tbody>{visibleSecurityLogs.slice(0,5).map((log,i)=>{const bad=log.status==='Tampered'||log.integrity===false;const replay=log.status==='Replay';return <tr key={log.sequence||log.time+log.device+i} className={activeSecurityLog && securityLogKey(activeSecurityLog)===securityLogKey(log)?'selected':''} onClick={()=>setSelectedSecurityLog(securityLogKey(log))}><td>{log.time}</td><td><span className="device-mark"><Activity size={16}/>{log.device}</span></td><td>{log.patient}</td><td>{log.sequence??'—'}</td><td><span className={'security-badge '+(bad?'bad':'good')}>{bad?'TAMPERED':'VALID'}</span></td><td><span className={'security-badge '+(replay?'warn':'good')}>{replay?'REPLAY':'OK'}</span></td><td><span className={'security-badge '+(log.status==='Valid'?'good':'bad')}>{log.action||(log.status==='Valid'?'ACCEPTED':'REJECTED')}</span></td></tr>})}</tbody></table>{!visibleSecurityLogs.length&&<div className="security-empty">No packet events match these filters.</div>}</div>
+                </section>
+                <div className="security-side-stack">
+                  <section className="security-panel"><div className="security-section-heading"><h2>Integrity Summary</h2><span>Recent activity</span></div><div className="integrity-grid">
+                    <div className="integrity-metric"><span>Valid Packets</span><strong className="good-text">{securityStats.valid.toLocaleString()}</strong><b>{statRate(securityStats.valid)}%</b><i><em style={{width:statRate(securityStats.valid)+'%'}}/></i></div>
+                    <div className="integrity-metric"><span>Tampered (HMAC)</span><strong className="bad-text">{securityStats.tampered.toLocaleString()}</strong><b>{statRate(securityStats.tampered)}%</b><i><em className="bar-red" style={{width:Math.max(7,Number(statRate(securityStats.tampered)))+'%'}}/></i></div>
+                    <div className="integrity-metric"><span>Replay Detected</span><strong className="warn-text">{securityStats.replay.toLocaleString()}</strong><b>{statRate(securityStats.replay)}%</b><i><em className="bar-amber" style={{width:Math.max(7,Number(statRate(securityStats.replay)))+'%'}}/></i></div>
+                    <div className="integrity-metric"><span>Rejected (Total)</span><strong className="bad-text">{(securityStats.tampered+securityStats.replay).toLocaleString()}</strong><b>{statRate(securityStats.tampered+securityStats.replay)}%</b><i><em className="bar-red" style={{width:Math.max(7,Number(statRate(securityStats.tampered+securityStats.replay)))+'%'}}/></i></div>
+                  </div></section>
+                  <section className="security-panel threat-timeline"><div className="security-section-heading"><h2>Recent Threat Timeline</h2><span>Latest events</span></div><div className="timeline-list">{messageLogs.slice(0,5).map((log,i)=><button key={log.time+i} onClick={()=>setSelectedSecurityLog(securityLogKey(log))} className="timeline-event"><i className={log.status==='Replay'?'timeline-amber':log.status==='Valid'?'timeline-green':''}/><time>{log.time}</time><span><b>{log.status==='Replay'?'Replay':log.status==='Tampered'?'Tampered':'Valid'}</b><small>{log.status==='Valid'?'Packet accepted':'Security check flagged'} ({log.patient}, {log.device})</small></span><strong className={'timeline-status '+(log.status==='Valid'?'accepted':log.status==='Replay'?'replay':'rejected')}>{log.status==='Valid'?'VALID':log.status==='Replay'?'REPLAY':'TAMPERED'}</strong></button>)}</div></section>
+                </div>
+              </div>
+              <section className="security-panel security-controls"><div className="security-section-heading"><h2>Simulation Controls</h2><span>Trigger a test event</span></div><div className="security-control-list">
+                <button className="control-tamper" onClick={()=>triggerAttack('TAMPER')}><ShieldAlert size={20}/><span><b>Inject HMAC Tamper</b><small>Send a packet with an invalid HMAC</small></span></button>
+                <button className="control-replay" onClick={()=>triggerAttack('REPLAY')}><RotateCcw size={20}/><span><b>Inject Replay</b><small>Resend a previously seen packet</small></span></button>
+                <button className="control-reset" onClick={clearAttack}><RotateCcw size={20}/><span><b>Reset Simulation</b><small>Clear events and reset counters</small></span></button>
+              </div></section>
+              <section className="security-panel event-details"><div className="security-section-heading"><div className="details-title"><h2>Event Details</h2><span>Selected packet and security metadata</span></div><button className="details-clear" aria-label="Clear selected event" onClick={()=>setSelectedSecurityLog(null)}>×</button></div>
+                {activeSecurityLog?<div className="event-detail-grid"><dl className="packet-fields">
+                  <div><dt>Timestamp</dt><dd>{activeSecurityLog.time}</dd></div><div><dt>Device</dt><dd>{activeSecurityLog.device}</dd></div><div><dt>Patient (Simulated)</dt><dd>{activeSecurityLog.patient}</dd></div><div><dt>Sequence Number</dt><dd>{activeSecurityLog.sequence??'Not provided by feed'}</dd></div>
+                  <div><dt>HMAC Status</dt><dd>{activeSecurityLog.status==='Tampered'?'TAMPERED':'VALID'}</dd></div><div><dt>Replay Check</dt><dd>{activeSecurityLog.status==='Replay'?'REPLAY':'OK'}</dd></div><div><dt>Gateway Action</dt><dd>{activeSecurityLog.action||(activeSecurityLog.status==='Valid'?'ACCEPTED':'REJECTED')}</dd></div><div><dt>Reason</dt><dd>{activeSecurityLog.reason||(activeSecurityLog.status==='Valid'?'Authentication checks passed':activeSecurityLog.status+' packet rejected')}</dd></div>
+                </dl><div className="payload-column"><h3>Packet Record (JSON)</h3><pre>{JSON.stringify({device_id:activeSecurityLog.device,patient_id:activeSecurityLog.patient,sequence:activeSecurityLog.sequence??null,timestamp:activeSecurityLog.time,hmac_valid:activeSecurityLog.integrity,gateway_action:activeSecurityLog.action||null,reason:activeSecurityLog.reason||null},null,2)}</pre></div><dl className="signature-fields"><h3>Verification Metadata</h3><div><dt>HMAC verification</dt><dd>{activeSecurityLog.integrity===false?'FAILED':activeSecurityLog.integrity===true?'PASSED':'Unavailable'}</dd></div><div><dt>Replay detection</dt><dd>{activeSecurityLog.status==='Replay'?'DETECTED':'CLEAR'}</dd></div><div><dt>Gateway result</dt><dd>{activeSecurityLog.status==='Valid'?'ACCEPTED':'REJECTED'}</dd></div><div><dt>Source</dt><dd>{isLiveBackend?'Live simulation feed':'Local sample data'}</dd></div></dl></div>:<div className="security-empty">Select a packet above to inspect its event details.</div>}
+              </section>
+            </motion.div>}
 
             {/* ========================================== */}
             {/* VIEW 3: ML ANOMALY DETECTION */}
@@ -926,53 +717,56 @@ export default function App() {
             {activeTab === 'anomaly' && (
               <motion.div
                 key="anomaly-view"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
               >
                 {/* 5 KPI Stat Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Anomaly Score (P001)</div>
+                <div className="anomaly-score-cards" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
+                    <div style={{ fontSize: '0.72rem', color: '#667085' }}>Anomaly Score (P001)</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: 4, color: '#34d399' }}>{anomalies.P001.score.toFixed(2)}</div>
                     <div style={{ fontSize: '0.7rem', color: '#6ee7b7' }}>({anomalies.P001.status})</div>
+                    <div className="score-track"><i style={{width:`${anomalies.P001.score*100}%`}}/></div>
                   </div>
 
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Anomaly Score (P002)</div>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
+                    <div style={{ fontSize: '0.72rem', color: '#667085' }}>Anomaly Score (P002)</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: 4, color: '#fbbf24' }}>{anomalies.P002.score.toFixed(2)}</div>
                     <div style={{ fontSize: '0.7rem', color: '#fde68a' }}>({anomalies.P002.status})</div>
+                    <div className="score-track warning"><i style={{width:`${anomalies.P002.score*100}%`}}/></div>
                   </div>
 
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Anomaly Score (P003)</div>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
+                    <div style={{ fontSize: '0.72rem', color: '#667085' }}>Anomaly Score (P003)</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: 4, color: '#34d399' }}>{anomalies.P003.score.toFixed(2)}</div>
                     <div style={{ fontSize: '0.7rem', color: '#6ee7b7' }}>({anomalies.P003.status})</div>
+                    <div className="score-track"><i style={{width:`${anomalies.P003.score*100}%`}}/></div>
                   </div>
 
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Adaptive Threshold (T₁)</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: 4, color: '#f8fafc' }}>{anomalies.adaptiveThreshold}</div>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
+                    <div style={{ fontSize: '0.72rem', color: '#667085' }}>Adaptive Threshold (T₁)</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: 4, color: '#101828' }}>{anomalies.adaptiveThreshold}</div>
                   </div>
 
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Critical Threshold (T₂)</div>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
+                    <div style={{ fontSize: '0.72rem', color: '#667085' }}>Critical Threshold (T₂)</div>
                     <div style={{ fontSize: '1.5rem', fontWeight: 800, marginTop: 4, color: '#ef4444' }}>{anomalies.criticalThreshold}</div>
                   </div>
                 </div>
 
                 {/* Bottom Row: Anomaly Score Chart + Recent Anomalies Table */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: 16 }}>
+                <div className="anomaly-content-grid" style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: 16 }}>
                   {/* Chart */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 20 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 20 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                       <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>Anomaly Score (Real-time)</div>
                       <div style={{ display: 'gap', gap: 12, fontSize: '0.72rem' }}>
                         <span style={{ color: '#10b981', marginRight: 12 }}>— P001</span>
                         <span style={{ color: '#f59e0b', marginRight: 12 }}>— P002</span>
-                        <span style={{ color: '#38bdf8', marginRight: 12 }}>— P003</span>
+                        <span style={{ color: '#2563eb', marginRight: 12 }}>— P003</span>
                         <span style={{ color: '#ef4444', marginRight: 12 }}>- - T₂ (Critical)</span>
                         <span style={{ color: '#f59e0b' }}>- - T₁ (Warning)</span>
                       </div>
@@ -985,8 +779,8 @@ export default function App() {
                           const y = 180 - v * 160;
                           return (
                             <g key={v}>
-                              <line x1="40" y1={y} x2="580" y2={y} stroke="#1f293d" strokeDasharray="3 3" />
-                              <text x="30" y={y + 4} fill="#64748b" fontSize="9" textAnchor="end">{v.toFixed(1)}</text>
+                              <line x1="40" y1={y} x2="580" y2={y} stroke="#e4e6e9" strokeDasharray="3 3" />
+                              <text x="30" y={y + 4} fill="#667085" fontSize="9" textAnchor="end">{v.toFixed(1)}</text>
                             </g>
                           );
                         })}
@@ -999,7 +793,7 @@ export default function App() {
                         {/* P001 baseline */}
                         <polyline fill="none" stroke="#10b981" strokeWidth="2" points="40,165 140,167 240,166 340,164 440,166 540,165" />
                         {/* P003 baseline */}
-                        <polyline fill="none" stroke="#38bdf8" strokeWidth="2" points="40,160 140,162 240,158 340,161 440,159 540,160" />
+                        <polyline fill="none" stroke="#2563eb" strokeWidth="2" points="40,160 140,162 240,158 340,161 440,159 540,160" />
                         {/* P002 spiking curve */}
                         <polyline fill="none" stroke="#f59e0b" strokeWidth="2.5" points="40,120 140,122 240,121 340,120 390,95 440,75 490,72 540,68" />
                       </svg>
@@ -1007,11 +801,11 @@ export default function App() {
                   </div>
 
                   {/* Table */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 14 }}>Recent Anomalies</div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                       <thead>
-                        <tr style={{ color: '#64748b', borderBottom: '1px solid #1f293d', textAlign: 'left' }}>
+                        <tr style={{ color: '#667085', borderBottom: '1px solid #e4e6e9', textAlign: 'left' }}>
                           <th style={{ padding: '8px 4px' }}>Time</th>
                           <th style={{ padding: '8px 4px' }}>Patient</th>
                           <th style={{ padding: '8px 4px' }}>Score</th>
@@ -1019,9 +813,9 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        <tr style={{ borderBottom: '1px solid #161e2e' }}>
-                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#94a3b8' }}>14:36:12</td>
-                          <td style={{ padding: '10px 4px', color: '#38bdf8' }}>P002</td>
+                        <tr style={{ borderBottom: '1px solid #eceef1' }}>
+                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#667085' }}>14:36:12</td>
+                          <td style={{ padding: '10px 4px', color: '#2563eb' }}>P002</td>
                           <td style={{ padding: '10px 4px', fontWeight: 700 }}>0.72</td>
                           <td style={{ padding: '10px 4px' }}>
                             <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
@@ -1029,9 +823,9 @@ export default function App() {
                             </span>
                           </td>
                         </tr>
-                        <tr style={{ borderBottom: '1px solid #161e2e' }}>
-                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#94a3b8' }}>14:34:27</td>
-                          <td style={{ padding: '10px 4px', color: '#38bdf8' }}>P002</td>
+                        <tr style={{ borderBottom: '1px solid #eceef1' }}>
+                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#667085' }}>14:34:27</td>
+                          <td style={{ padding: '10px 4px', color: '#2563eb' }}>P002</td>
                           <td style={{ padding: '10px 4px', fontWeight: 700 }}>0.69</td>
                           <td style={{ padding: '10px 4px' }}>
                             <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
@@ -1039,9 +833,9 @@ export default function App() {
                             </span>
                           </td>
                         </tr>
-                        <tr style={{ borderBottom: '1px solid #161e2e' }}>
-                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#94a3b8' }}>14:31:05</td>
-                          <td style={{ padding: '10px 4px', color: '#38bdf8' }}>P003</td>
+                        <tr style={{ borderBottom: '1px solid #eceef1' }}>
+                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#667085' }}>14:31:05</td>
+                          <td style={{ padding: '10px 4px', color: '#2563eb' }}>P003</td>
                           <td style={{ padding: '10px 4px', fontWeight: 700 }}>0.18</td>
                           <td style={{ padding: '10px 4px' }}>
                             <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
@@ -1049,9 +843,9 @@ export default function App() {
                             </span>
                           </td>
                         </tr>
-                        <tr style={{ borderBottom: '1px solid #161e2e' }}>
-                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#94a3b8' }}>14:30:52</td>
-                          <td style={{ padding: '10px 4px', color: '#38bdf8' }}>P001</td>
+                        <tr style={{ borderBottom: '1px solid #eceef1' }}>
+                          <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#667085' }}>14:30:52</td>
+                          <td style={{ padding: '10px 4px', color: '#2563eb' }}>P001</td>
                           <td style={{ padding: '10px 4px', fontWeight: 700 }}>0.09</td>
                           <td style={{ padding: '10px 4px' }}>
                             <span style={{ padding: '3px 8px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 700, background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
@@ -1072,74 +866,75 @@ export default function App() {
             {activeTab === 'rl' && (
               <motion.div
                 key="rl-view"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                className="rl-page"
               >
+                <div className="synthetic-notice"><span>i</span><div><strong>Synthetic simulation</strong><small>This page shows results from a synthetic simulation environment.</small></div></div>
                 {/* 5 KPI Stat Cards */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
+                <div className="rl-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
                   {/* Current Action */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <ShieldAlert size={16} color="#ef4444" />
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Current Action</div>
+                        <div style={{ fontSize: '0.72rem', color: '#667085' }}>Current Action</div>
                         <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#f87171' }}>{rlAgentState.currentAction}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Policy Confidence */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(168, 85, 247, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Zap size={16} color="#a855f7" />
+                        <Zap size={16} color="#7db8dc" />
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Policy Confidence</div>
+                        <div style={{ fontSize: '0.72rem', color: '#667085' }}>Policy Confidence</div>
                         <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2 }}>{rlAgentState.confidence}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Cumulative Reward */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <TrendingUp size={16} color="#10b981" />
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Cumulative Reward</div>
+                        <div style={{ fontSize: '0.72rem', color: '#667085' }}>Cumulative Reward</div>
                         <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#34d399' }}>+{rlAgentState.cumulativeReward}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Episode */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Activity size={16} color="#38bdf8" />
+                      <div style={{ width: 34, height: 34, borderRadius: 8, background: '#f8f9fb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Activity size={16} color="#2563eb" />
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Episode</div>
+                        <div style={{ fontSize: '0.72rem', color: '#667085' }}>Episode</div>
                         <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2 }}>{rlAgentState.episode} / {rlAgentState.totalEpisodes}</div>
                       </div>
                     </div>
                   </div>
 
                   {/* Training Status */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 16 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 10, padding: 16 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <CheckCircle2 size={16} color="#10b981" />
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Training Status</div>
+                        <div style={{ fontSize: '0.72rem', color: '#667085' }}>Training Status</div>
                         <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 2, color: '#34d399' }}>{rlAgentState.trainingStatus}</div>
                       </div>
                     </div>
@@ -1147,26 +942,25 @@ export default function App() {
                 </div>
 
                 {/* Bottom Row: RL Decision (Live) Table + Training Performance Curve */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: 16 }}>
+                <div className="rl-content" style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: 16 }}>
                   {/* Table */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 14 }}>RL Decision (Live)</div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                       <thead>
-                        <tr style={{ color: '#64748b', borderBottom: '1px solid #1f293d', textAlign: 'left' }}>
+                        <tr style={{ color: '#667085', borderBottom: '1px solid #e4e6e9', textAlign: 'left' }}>
                           <th style={{ padding: '8px 4px' }}>Time</th>
                           <th style={{ padding: '8px 4px' }}>Patient</th>
                           <th style={{ padding: '8px 4px' }}>State (sₜ)</th>
                           <th style={{ padding: '8px 4px' }}>Action</th>
-                          <th style={{ padding: '8px 4px' }}>Reward</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {rlDecisions.map((dec, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid #161e2e' }}>
-                            <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#94a3b8' }}>{dec.time}</td>
-                            <td style={{ padding: '10px 4px', color: '#38bdf8' }}>{dec.patient}</td>
-                            <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#cbd5e1', fontSize: '0.72rem' }}>{dec.state}</td>
+                        {rlDecisions.slice(0, 3).map((dec, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid #eceef1' }}>
+                            <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#667085' }}>{dec.time}</td>
+                            <td style={{ padding: '10px 4px', color: '#2563eb' }}>{dec.patient}</td>
+                            <td style={{ padding: '10px 4px', fontFamily: 'monospace', color: '#cbd5e1', fontSize: '0.72rem' }}>{Array.isArray(dec.state) ? '[' + dec.state.join(', ') + ']' : dec.state}</td>
                             <td style={{ padding: '10px 4px' }}>
                               <span style={{
                                 padding: '3px 8px',
@@ -1179,7 +973,6 @@ export default function App() {
                                 {dec.action}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 4px', color: '#34d399', fontWeight: 700 }}>{dec.reward}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1187,7 +980,7 @@ export default function App() {
                   </div>
 
                   {/* Training Performance Chart */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 14 }}>Training Performance</div>
                     <div style={{ height: 180, width: '100%' }}>
                       <svg viewBox="0 0 400 180" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
@@ -1196,8 +989,8 @@ export default function App() {
                           const y = 160 - ((v + 200) / 800) * 140;
                           return (
                             <g key={v}>
-                              <line x1="30" y1={y} x2="380" y2={y} stroke="#1f293d" strokeDasharray="3 3" />
-                              <text x="24" y={y + 3} fill="#64748b" fontSize="8" textAnchor="end">{v}</text>
+                              <line x1="30" y1={y} x2="380" y2={y} stroke="#e4e6e9" strokeDasharray="3 3" />
+                              <text x="24" y={y + 3} fill="#667085" fontSize="8" textAnchor="end">{v}</text>
                             </g>
                           );
                         })}
@@ -1205,14 +998,14 @@ export default function App() {
                         {/* Episodes X axis */}
                         {[0, 50, 100, 150, 200, 250].map((ep) => {
                           const x = 30 + (ep / 250) * 350;
-                          return <text key={ep} x={x} y="175" fill="#64748b" fontSize="8" textAnchor="middle">{ep}</text>;
+                          return <text key={ep} x={x} y="175" fill="#667085" fontSize="8" textAnchor="middle">{ep}</text>;
                         })}
 
                         {/* Reward curve: starts at -150 and converges to +450 */}
                         <path
                           d="M 30,150 Q 80,105 150,75 T 260,55 T 380,48"
                           fill="none"
-                          stroke="#c084fc"
+                          stroke="#a9b6c4"
                           strokeWidth="2.5"
                         />
                       </svg>
@@ -1225,210 +1018,94 @@ export default function App() {
             {/* ========================================== */}
             {/* VIEW 5: PATIENT DIGITAL TWIN */}
             {/* ========================================== */}
+            {/* VIEW 5: PATIENT DIGITAL TWIN */}
             {activeTab === 'twin' && (
               <motion.div
                 key="twin-view"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                style={{ display: 'grid', gridTemplateColumns: '260px 1fr 280px', gap: 16 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                className="twin-overview"
               >
-                {/* Left Card: 3D Body Silhouette + Model Info */}
-                <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ height: 210, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                    {/* Anatomical wireframe visual representation */}
-                    <svg viewBox="0 0 100 160" style={{ height: '90%', opacity: 0.85 }}>
-                      {/* Head */}
-                      <circle cx="50" cy="22" r="14" fill="none" stroke="#38bdf8" strokeWidth="1.5" />
-                      {/* Torso */}
-                      <path d="M 32,40 L 68,40 L 62,95 L 38,95 Z" fill="none" stroke="#38bdf8" strokeWidth="1.5" />
-                      {/* Arms */}
-                      <path d="M 32,40 L 18,80 L 15,110" fill="none" stroke="#38bdf8" strokeWidth="1.5" />
-                      <path d="M 68,40 L 82,80 L 85,110" fill="none" stroke="#38bdf8" strokeWidth="1.5" />
-                      {/* Legs */}
-                      <path d="M 40,95 L 38,155" fill="none" stroke="#38bdf8" strokeWidth="1.5" />
-                      <path d="M 60,95 L 62,155" fill="none" stroke="#38bdf8" strokeWidth="1.5" />
-                      {/* Glowing Heart pulse */}
-                      <circle cx="54" cy="56" r="6" fill="#ef4444" opacity="0.8">
-                        <animate attributeName="r" values="5;7.5;5" dur="1s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1s" repeatCount="indefinite" />
-                      </circle>
-                    </svg>
+                <section className="twin-selector-card"><User size={22}/><label htmlFor="twin-patient-select">Patient Selection</label><select id="twin-patient-select" value={selectedTwinPatient} onChange={e=>setSelectedTwinPatient(e.target.value)}><option value="all">All Patients</option>{Object.values(patients).map(p=><option value={p.id} key={p.id}>{p.id} · {p.name.split('–')[1]?.trim()}</option>)}</select></section>
+                <section className="twin-comparison">
+                  <div className="twin-comparison-heading">
+                    <div><h2>Patient Digital Twin</h2><p>Latest telemetry and twin calculations for monitored patients</p></div>
+                    <span className={isLiveBackend ? 'twin-feed live' : 'twin-feed'}>{isLiveBackend ? 'Live simulation feed' : 'Waiting for simulation feed'}</span>
                   </div>
-
-                  <div style={{ marginTop: 'auto', borderTop: '1px solid #1f293d', paddingTop: 14 }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 800 }}>P002 – Cardiac</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10, fontSize: '0.75rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#64748b' }}>Twin Status:</span>
-                        <span style={{ color: '#34d399', fontWeight: 600 }}>Synchronized</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#64748b' }}>Baseline:</span>
-                        <span style={{ color: '#cbd5e1' }}>Cardiac</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#64748b' }}>Twin Model:</span>
-                        <span style={{ color: '#cbd5e1' }}>LSTM (30-step)</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#64748b' }}>Last Update:</span>
-                        <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>14:36:17</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Center: MAP, RPP, Discrepancy KPI Cards + Actual vs Predicted Chart */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {/* 3 Metrics */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                    <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 14 }}>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>MAP</div>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: 2, color: '#f87171' }}>110.0 <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>mmHg</span></div>
-                      <div style={{ fontSize: '0.68rem', color: '#fca5a5' }}>(High)</div>
-                    </div>
-
-                    <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 14 }}>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>RPP</div>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: 2, color: '#f87171' }}>15,876</div>
-                      <div style={{ fontSize: '0.68rem', color: '#fca5a5' }}>(High)</div>
-                    </div>
-
-                    <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 10, padding: 14 }}>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Discrepancy Score</div>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: 2, color: '#f87171' }}>0.68</div>
-                      <div style={{ fontSize: '0.68rem', color: '#fca5a5' }}>(↑ High)</div>
-                    </div>
-                  </div>
-
-                  {/* Actual vs Predicted Heart Rate Chart */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18, flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>Actual vs. Predicted Heart Rate</div>
-                      <div style={{ display: 'flex', gap: 14, fontSize: '0.72rem' }}>
-                        <span style={{ color: '#38bdf8' }}>— Actual HR</span>
-                        <span style={{ color: '#c084fc' }}>- - Predicted HR (Twin)</span>
-                      </div>
-                    </div>
-
-                    <div style={{ height: 180, width: '100%' }}>
-                      <svg viewBox="0 0 500 180" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
-                        {/* Grid */}
-                        {[60, 80, 100, 120, 140].map((v) => {
-                          const y = 160 - ((v - 60) / 90) * 140;
-                          return (
-                            <g key={v}>
-                              <line x1="35" y1={y} x2="480" y2={y} stroke="#1f293d" strokeDasharray="3 3" />
-                              <text x="25" y={y + 3} fill="#64748b" fontSize="8" textAnchor="end">{v}</text>
-                            </g>
-                          );
-                        })}
-
-                        {/* Actual curve */}
-                        <path
-                          d="M 35,130 L 70,126 L 110,132 L 150,128 L 190,135 L 230,125 L 270,118 L 310,105 L 350,92 L 390,98 L 430,88 L 480,95"
-                          fill="none"
-                          stroke="#38bdf8"
-                          strokeWidth="2.5"
-                        />
-
-                        {/* Predicted Twin curve */}
-                        <path
-                          d="M 35,130 L 70,128 L 110,129 L 150,129 L 190,131 L 230,128 L 270,125 L 310,115 L 350,105 L 390,102 L 430,95 L 480,92"
-                          fill="none"
-                          stroke="#c084fc"
-                          strokeWidth="2"
-                          strokeDasharray="4 4"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Column: Twin Analysis */}
-                <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 16 }}>Twin Analysis</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: '0.78rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#94a3b8' }}>Prediction Model</span>
-                      <span style={{ color: '#34d399', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <CheckCircle2 size={13} /> Online
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#94a3b8' }}>MAP Trend</span>
-                      <span style={{ color: '#f87171' }}>↑ Increasing</span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#94a3b8' }}>RPP Trend</span>
-                      <span style={{ color: '#f87171' }}>↑ Increasing</span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: '#94a3b8' }}>Physiological Drift</span>
-                      <span style={{ color: '#f87171' }}>High</span>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: '1px solid #1f293d' }}>
-                      <span style={{ color: '#94a3b8', fontWeight: 600 }}>Overall Status</span>
-                      <span style={{ color: '#ef4444', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <AlertTriangle size={14} /> At Risk
-                      </span>
-                    </div>
-                  </div>
+                  <div className="twin-table-wrap"><table className="twin-comparison-table">
+                    <thead><tr><th>Patient</th><th>Clinical state</th><th>Heart rate</th><th>Blood pressure</th><th>SpO₂</th><th>Temp.</th><th>MAP</th><th>RPP</th><th>Discrepancy</th><th>Twin status</th></tr></thead>
+                    <tbody>{Object.values(patients).filter(patient => selectedTwinPatient === 'all' || patient.id === selectedTwinPatient).map(patient => {
+                      const twin = digitalTwins[patient.id];
+                      const level = patient.level || 'Normal';
+                      return <tr key={patient.id}>
+                        <td><strong>{patient.id}</strong><small>{patient.name.split('–')[1]?.trim()}</small></td>
+                        <td><span className={'patient-level patient-status-'+patient.id}><i/>{patient.name.split('–')[1]?.trim()}</span><small>{patient.status}</small></td>
+                        <td>{patient.hr}<small>bpm</small></td><td>{patient.bp}<small>mmHg</small></td><td>{patient.spo2}<small>%</small></td><td>{patient.temp}<small>°C</small></td>
+                        <td>{twin ? twin.map_val.toFixed(1) : '—'}<small>mmHg</small></td><td>{twin ? twin.rpp_val.toLocaleString() : '—'}</td>
+                        <td>{twin ? twin.discrepancy_score.toFixed(2) : '—'}</td><td><span className={'twin-state '+(twin?.status === 'At Risk' ? 'risk' : twin ? 'synced' : '')}>{twin?.status || (isLiveBackend ? 'Updating' : 'Unavailable')}</span></td>
+                      </tr>;
+                    })}</tbody>
+                  </table></div>
+                </section>
+                <div className="twin-prediction-grid">
+                  <section className="twin-chart-card"><h2><Activity size={20}/>Actual vs Predicted Heart Rate (bpm)</h2><div className="twin-chart-legend"><span>━ Actual (mean)</span><span>┈ Predicted (mean)</span></div><svg viewBox="0 0 900 260" role="img" aria-label="Actual and predicted heart rate for all patients">
+                    {[0,40,80,120,160].map(v=><g key={v}><line x1="44" x2="880" y1={220-v*1.15} y2={220-v*1.15}/><text x="34" y={224-v*1.15}>{v}</text></g>)}
+                    {Object.values(patients).filter(p=>selectedTwinPatient==='all'||p.id===selectedTwinPatient).map(p=>{const points=p.history.map((v,i)=>`${50+i*82},${220-v*1.15}`).join(' ');const predicted=p.history.map((v,i)=>`${50+i*82},${220-(v+(i%3===0?2:-1))*1.15}`).join(' ');return <g key={p.id}><polyline className="twin-actual" stroke={p.color} points={points}/><polyline className="twin-predicted" stroke={p.color} points={predicted}/></g>})}
+                    {['0 min','3 min','6 min','9 min','12 min','15 min'].map((t,i)=><text key={t} x={50+i*164} y="248">{t}</text>)}
+                  </svg></section>
+                  <section className="twin-analysis"><h2><TrendingUp size={20}/>Twin Analysis</h2><div><span>Prediction model</span><b className="analysis-online">Online</b></div><div><span>MAP trend</span><b>Monitoring</b></div><div><span>RPP trend</span><b>Monitoring</b></div><div><span>Physiological drift</span><b>Monitoring</b></div><div><span>Overall status</span><b className="analysis-online">Synchronized</b></div></section>
                 </div>
               </motion.div>
             )}
 
-            {/* ========================================== */}
-            {/* VIEW 6: EXPERIMENTS & REPORTS */}
-            {/* ========================================== */}
             {activeTab === 'reports' && (
               <motion.div
                 key="reports-view"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
               >
                 {/* Secondary Sub-tabs */}
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button style={{ padding: '8px 16px', borderRadius: 8, background: '#4f46e5', color: '#fff', border: 'none', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <div className="report-tabs" style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => document.getElementById('report-evaluation')?.scrollIntoView({ behavior: 'smooth' })} style={{ padding: '8px 16px', borderRadius: 6, background: '#2563eb', color: '#fff', border: '1px solid #38749a', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                     <FileBarChart size={14} /> Evaluation Results
                   </button>
-                  <button style={{ padding: '8px 16px', borderRadius: 8, background: '#111827', color: '#94a3b8', border: '1px solid #1f293d', fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <button onClick={() => document.getElementById('report-experiments')?.scrollIntoView({ behavior: 'smooth' })} style={{ padding: '8px 16px', borderRadius: 8, background: '#ffffff', color: '#667085', border: '1px solid #e4e6e9', fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                     <Clock size={14} /> Experiment Logs
                   </button>
-                  <button style={{ padding: '8px 16px', borderRadius: 8, background: '#111827', color: '#94a3b8', border: '1px solid #1f293d', fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <button onClick={() => document.getElementById('report-figures')?.scrollIntoView({ behavior: 'smooth' })} style={{ padding: '8px 16px', borderRadius: 8, background: '#ffffff', color: '#667085', border: '1px solid #e4e6e9', fontSize: '0.8rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                     <LayoutDashboard size={14} /> Generated Figures
                   </button>
                 </div>
 
+                <div className="report-kpis">{[
+                  ['Test scenarios','5','blue',<FileBarChart size={20}/>],['Total samples','50,000','green',<Server size={20}/>],['Attacks detected','5,685','red',<ShieldAlert size={20}/>],['Missed events (synthetic)','0','purple',<Target size={20}/>],['Average response time','412 ms','blue',<Clock size={20}/>]
+                ].map(([label,value,tone,icon])=><div className={'report-kpi '+tone} key={label}><span className="report-kpi-icon">{icon}</span><div><small>{label}</small><strong>{value}</strong></div><span className="report-spark" aria-hidden="true">{[4,3,4,5,4,6,5,8,7,10].map((n,i)=><i key={i} style={{height:`${n*2}px`}}/>)}</span></div>)}</div>
+
                 {/* Table & Summary row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr', gap: 16 }}>
+                <div id="report-evaluation" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 16, scrollMarginTop: 24 }}>
                   {/* Model Evaluation Table */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18 }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 14 }}>Model Evaluation (Test Set)</div>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                       <thead>
-                        <tr style={{ color: '#64748b', borderBottom: '1px solid #1f293d', textAlign: 'left' }}>
+                        <tr style={{ color: '#667085', borderBottom: '1px solid #e4e6e9', textAlign: 'left' }}>
                           <th style={{ padding: '8px 6px' }}>Method</th>
                           <th style={{ padding: '8px 6px' }}>Accuracy</th>
                           <th style={{ padding: '8px 6px' }}>Precision</th>
                           <th style={{ padding: '8px 6px' }}>Recall (DR)</th>
                           <th style={{ padding: '8px 6px' }}>F1-Score</th>
                           <th style={{ padding: '8px 6px' }}>FPR</th>
-                          <th style={{ padding: '8px 6px' }}>Missed (Clinical)</th>
+                          <th style={{ padding: '8px 6px' }}>Missed Events (Synthetic)</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr style={{ borderBottom: '1px solid #161e2e' }}>
-                          <td style={{ padding: '10px 6px', color: '#94a3b8' }}>Rule-Based (Baseline)</td>
+                        <tr style={{ borderBottom: '1px solid #eceef1' }}>
+                          <td style={{ padding: '10px 6px', color: '#667085' }}>Rule-Based (Baseline)</td>
                           <td style={{ padding: '10px 6px' }}>0.944</td>
                           <td style={{ padding: '10px 6px' }}>1.000</td>
                           <td style={{ padding: '10px 6px' }}>0.508</td>
@@ -1436,58 +1113,61 @@ export default function App() {
                           <td style={{ padding: '10px 6px', color: '#34d399' }}>0.000</td>
                           <td style={{ padding: '10px 6px', color: '#f87171', fontWeight: 600 }}>1,301</td>
                         </tr>
-                        <tr style={{ borderBottom: '1px solid #161e2e' }}>
-                          <td style={{ padding: '10px 6px', color: '#94a3b8' }}>Isolation Forest</td>
-                          <td style={{ padding: '10px 6px' }}>0.878</td>
-                          <td style={{ padding: '10px 6px' }}>0.469</td>
-                          <td style={{ padding: '10px 6px' }}>0.556</td>
-                          <td style={{ padding: '10px 6px' }}>0.509</td>
-                          <td style={{ padding: '10px 6px', color: '#fbbf24' }}>0.081</td>
-                          <td style={{ padding: '10px 6px', color: '#f87171', fontWeight: 600 }}>1,163</td>
+                        <tr style={{ borderBottom: '1px solid #eceef1' }}>
+                          <td style={{ padding: '10px 6px', color: '#667085' }}>Isolation Forest</td>
+                          <td style={{ padding: '10px 6px' }}>0.871</td>
+                          <td style={{ padding: '10px 6px' }}>0.446</td>
+                          <td style={{ padding: '10px 6px' }}>0.551</td>
+                          <td style={{ padding: '10px 6px' }}>0.493</td>
+                          <td style={{ padding: '10px 6px', color: '#fbbf24' }}>0.088</td>
+                          <td style={{ padding: '10px 6px', color: '#f87171', fontWeight: 600 }}>1,187</td>
                         </tr>
-                        <tr style={{ background: 'rgba(99, 102, 241, 0.1)', borderBottom: '1px solid rgba(99, 102, 241, 0.3)' }}>
-                          <td style={{ padding: '10px 6px', color: '#818cf8', fontWeight: 700 }}>DQN (IoMT-Warden)</td>
-                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#34d399' }}>0.912</td>
-                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#34d399' }}>0.563</td>
+                        <tr style={{ background: 'rgba(56, 189, 248, 0.07)', borderBottom: '1px solid rgba(56, 189, 248, 0.2)' }}>
+                          <td style={{ padding: '10px 6px', color: '#2563eb', fontWeight: 700 }}>Threshold Policy + Safety Shield</td>
+                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#34d399' }}>0.910</td>
+                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#34d399' }}>0.558</td>
                           <td style={{ padding: '10px 6px', fontWeight: 700, color: '#34d399' }}>1.000</td>
-                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#34d399' }}>0.721</td>
-                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#fbbf24' }}>0.099</td>
-                          <td style={{ padding: '10px 6px', fontWeight: 800, color: '#34d399' }}>0 ✅</td>
+                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#34d399' }}>0.716</td>
+                          <td style={{ padding: '10px 6px', fontWeight: 700, color: '#fbbf24' }}>0.102</td>
+                          <td style={{ padding: '10px 6px', fontWeight: 800, color: '#34d399' }}>0</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
 
                   {/* Experiment Summary */}
-                  <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18 }}>
+                  <div id="report-experiments" className="report-summary" style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: 14 }}>Experiment Summary</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.78rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#94a3b8' }}>🧪 Test Scenarios:</span>
+                        <span style={{ color: '#667085', display:'inline-flex', alignItems:'center', gap:7 }}><Dna size={14}/> Test Scenarios:</span>
                         <span style={{ fontWeight: 700 }}>5</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#94a3b8' }}>📊 Total Samples:</span>
+                        <span style={{ color: '#667085', display:'inline-flex', alignItems:'center', gap:7 }}><Server size={14}/> Total Samples:</span>
                         <span style={{ fontWeight: 700 }}>50,000</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#94a3b8' }}>🚨 Attacks Detected:</span>
-                        <span style={{ fontWeight: 700, color: '#f87171' }}>1,942</span>
+                        <span style={{ color: '#667085', display:'inline-flex', alignItems:'center', gap:7 }}><ShieldAlert size={14}/> Attacks Detected:</span>
+                        <span style={{ fontWeight: 700, color: '#f87171' }}>5,685</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#94a3b8' }}>⚡ Missed Emergencies:</span>
+                        <span style={{ color: '#667085', display:'inline-flex', alignItems:'center', gap:7 }}><CheckCircle2 size={14}/> Missed Events (Synthetic):</span>
                         <span style={{ fontWeight: 700, color: '#34d399' }}>0</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: '#94a3b8' }}>⏱ Avg. Response Time:</span>
-                        <span style={{ fontWeight: 700, color: '#38bdf8' }}>412 ms</span>
+                        <span style={{ color: '#667085', display:'inline-flex', alignItems:'center', gap:7 }}><Clock size={14}/> Avg. Response Time:</span>
+                        <span style={{ fontWeight: 700, color: '#2563eb' }}>412 ms</span>
                       </div>
+                      <div className="report-patient-coverage"><span>Patient coverage</span><strong>P001 · P002 · P003</strong></div>
                     </div>
                   </div>
                 </div>
 
+                <section className="report-patient-section"><h3><User size={19}/>Patient Coverage <span>Evaluation dataset</span></h3><div>{Object.values(patients).map((p,i)=><div className={'coverage-item coverage-'+i} key={p.id}><i/>{p.id}</div>)}</div></section>
+
                 {/* Generated Figures Gallery */}
-                <div style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 18 }}>
+                <div id="report-figures" style={{ background: '#ffffff', border: '1px solid #e4e6e9', borderRadius: 12, padding: 18 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                     <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>Generated Figures</div>
                     <button
@@ -1507,7 +1187,7 @@ export default function App() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
-                        background: '#4f46e5',
+                        background: '#2563eb',
                         color: '#fff',
                         border: 'none',
                         padding: '6px 12px',
@@ -1532,8 +1212,8 @@ export default function App() {
                         key={idx}
                         onClick={() => setPreviewFigure(fig)}
                         style={{
-                          background: '#0d131f',
-                          border: '1px solid #1a2234',
+                          background: '#ffffff',
+                          border: '1px solid #e4e6e9',
                           borderRadius: 8,
                           padding: 10,
                           textAlign: 'center',
@@ -1541,11 +1221,11 @@ export default function App() {
                           transition: 'all 0.2s ease',
                         }}
                       >
-                        <div style={{ height: 105, background: '#111827', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, overflow: 'hidden', padding: 4 }}>
+                        <div style={{ height: 105, background: '#ffffff', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8, overflow: 'hidden', padding: 4 }}>
                           <img src={`/figures/${fig.svg}`} alt={fig.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: '#e2e8f0', fontWeight: 600 }}>{fig.title}</div>
-                        <div style={{ fontSize: '0.65rem', color: '#64748b', fontFamily: 'monospace', marginTop: 2 }}>{fig.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#101828', fontWeight: 600 }}>{fig.title}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#667085', fontFamily: 'monospace', marginTop: 2 }}>{fig.name}</div>
                       </div>
                     ))}
                   </div>
@@ -1571,8 +1251,8 @@ export default function App() {
                       <div
                         onClick={(e) => e.stopPropagation()}
                         style={{
-                          background: '#111827',
-                          border: '1px solid #334155',
+                          background: '#ffffff',
+                          border: '1px solid #d0d5dd',
                           borderRadius: 12,
                           padding: 20,
                           maxWidth: 880,
@@ -1583,7 +1263,7 @@ export default function App() {
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ fontWeight: 700, fontSize: '1rem', color: '#f8fafc' }}>{previewFigure.title}</div>
+                          <div style={{ fontWeight: 700, fontSize: '1rem', color: '#101828' }}>{previewFigure.title}</div>
                           <div style={{ display: 'flex', gap: 10 }}>
                             <a
                               href={`/figures/${previewFigure.svg}`}
@@ -1592,7 +1272,7 @@ export default function App() {
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 6,
-                                background: '#4f46e5',
+                                background: '#2563eb',
                                 color: '#fff',
                                 textDecoration: 'none',
                                 padding: '6px 12px',
@@ -1606,9 +1286,9 @@ export default function App() {
                             <button
                               onClick={() => setPreviewFigure(null)}
                               style={{
-                                background: '#1e293b',
-                                color: '#94a3b8',
-                                border: '1px solid #334155',
+                                background: '#f8f9fb',
+                                color: '#667085',
+                                border: '1px solid #d0d5dd',
                                 borderRadius: 6,
                                 padding: '6px 10px',
                                 cursor: 'pointer',
@@ -1619,7 +1299,7 @@ export default function App() {
                             </button>
                           </div>
                         </div>
-                        <div style={{ background: '#0d111d', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'center' }}>
+                        <div style={{ background: '#fafafa', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'center' }}>
                           <img src={`/figures/${previewFigure.svg}`} alt={previewFigure.title} style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }} />
                         </div>
                       </div>
@@ -1635,31 +1315,17 @@ export default function App() {
             {activeTab === 'settings' && (
               <motion.div
                 key="settings-view"
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                style={{ background: '#111827', border: '1px solid #1f293d', borderRadius: 12, padding: 24, maxWidth: 700 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                className="settings-page"
               >
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 16 }}>Configuration Parameters</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontSize: '0.8rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 10 }}>
-                    <span style={{ color: '#94a3b8' }}>Safety Shield Mode</span>
-                    <span style={{ color: '#34d399', fontWeight: 600 }}>Deterministic Override (Non-Bypassable)</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 10 }}>
-                    <span style={{ color: '#94a3b8' }}>EWMA Smoothing Factor (α)</span>
-                    <span style={{ fontFamily: 'monospace' }}>0.35</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 10 }}>
-                    <span style={{ color: '#94a3b8' }}>Isolation Forest Contamination (ν)</span>
-                    <span style={{ fontFamily: 'monospace' }}>0.05</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #1e293b', paddingBottom: 10 }}>
-                    <span style={{ color: '#94a3b8' }}>HMAC Secret Key</span>
-                    <span style={{ fontFamily: 'monospace', color: '#64748b' }}>sha256:****************</span>
-                  </div>
-                </div>
+                <section className="settings-section"><h2><ShieldCheck size={23}/>Safety</h2><div className="settings-field"><label htmlFor="safety-mode">Safety Shield Mode</label><select id="safety-mode" value={settingsConfig.safety} onChange={e=>setSettingsConfig({...settingsConfig,safety:e.target.value})}><option>Deterministic Override (Non-Bypassable)</option><option>Deterministic Override</option></select></div></section>
+                <section className="settings-section"><h2><Dna size={23}/>Digital Twin</h2><div className="settings-field"><label htmlFor="ewma">EWMA Smoothing Factor (α)</label><input id="ewma" type="number" min="0" max="1" step="0.01" value={settingsConfig.ewma} onChange={e=>setSettingsConfig({...settingsConfig,ewma:e.target.value})}/></div></section>
+                <section className="settings-section"><h2><Search size={23}/>Anomaly Detection</h2><div className="settings-field"><label htmlFor="contamination">Isolation Forest Contamination (ν)</label><input id="contamination" type="number" min="0" max="1" step="0.01" value={settingsConfig.contamination} onChange={e=>setSettingsConfig({...settingsConfig,contamination:e.target.value})}/></div></section>
+                <section className="settings-section"><h2><Lock size={23}/>Security</h2><div className="settings-field"><label htmlFor="secret">HMAC Secret Key</label><input id="secret" type="password" value={settingsConfig.secret} onChange={e=>setSettingsConfig({...settingsConfig,secret:e.target.value})}/></div></section>
+                <section className="settings-system"><div><h2><Radio size={21}/>System Information</h2><div className="settings-sys-row"><span>Source Status <b className="system-dot"/> Python SSE Live</span><span>Simulation Mode <b className="system-dot gray"/> Synthetic Simulation</span></div></div><button onClick={()=>{setSettingsSaved(true);setTimeout(()=>setSettingsSaved(false),2400)}}>{settingsSaved?'Configuration Saved':'Save Configuration'}</button></section>
               </motion.div>
             )}
 

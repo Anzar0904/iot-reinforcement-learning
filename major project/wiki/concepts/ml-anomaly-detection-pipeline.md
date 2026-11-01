@@ -62,3 +62,6 @@ Rather than relying on rigid physiological thresholds which cause false alarms a
 - [[wiki/concepts/external-repo-evaluations]]
 - [[wiki/concepts/five-pillar-security-architecture]]
 - [[wiki/concepts/deep-rl-threat-response-iotwarden]]
+
+## Current Implementation and Calibration
+`iot_reinforcement_learning/ml_detector.py` implements Isolation Forest scoring when scikit-learn is available and a robust fallback otherwise. It calibrates warning and critical cutoffs from empirical score quantiles; those thresholds are not the mean-plus-standard-deviation approximations described in the earlier proposal above. The reference library describes Isolation Forest scoring here: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html. The benchmark caveat is recorded in [[wiki/concepts/research-benchmark-evaluation-50k]].

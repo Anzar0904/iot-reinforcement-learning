@@ -56,3 +56,6 @@ To execute this plan smoothly without hitting scope gridlock:
 - [[wiki/projects/iot-healthcare-security]]
 - [[wiki/concepts/five-pillar-security-architecture]]
 - [[wiki/concepts/external-repo-evaluations]]
+
+## Follow-up Status
+The plan's selection and rating are historical records. Some plan items are implemented; others remain design targets. In particular, compare the mTLS goal and learned-policy evaluation claims with current source before reporting completion: [[wiki/projects/iot-healthcare-security]], [[wiki/concepts/five-pillar-security-architecture]], and [[wiki/concepts/research-benchmark-evaluation-50k]].

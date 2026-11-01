@@ -72,3 +72,6 @@ When integrating this code into our active codebase:
 
 ## Related Notes
 - [[wiki/projects/iot-healthcare-security]]
+
+## Active Workspace Status
+The current simulator in `iot_reinforcement_learning/core.py` defines three synthetic patient profiles and event injection hooks used by the local pipeline. Upstream repository behavior described above is historical source analysis; do not assume the active implementation preserves every upstream distribution or MQTT behavior. The current system's benchmark uses synthetic test cases; see [[wiki/concepts/research-benchmark-evaluation-50k]].

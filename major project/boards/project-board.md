@@ -14,17 +14,18 @@ Task board for the Major Project: Secure IoT Healthcare System. Tracks ongoing, 
 # Project Task Board
 
 ## Backlog
-- [ ] Implement Pillar 1: Digital Twin simulation state mirror (`digital_twin_engine.py`).
-- [ ] Implement Pillar 2: ML anomaly detection pipeline with adaptive thresholding (`anomaly_detector.py`).
-- [ ] Implement Pillar 3: Secure Device Authentication with mTLS and X.509 cert generator (`device_auth.py`).
-- [ ] Implement Pillar 4: Data Integrity verification with HMAC-SHA256 (`data_integrity.py`).
-- [ ] Implement Pillar 5: Reinforcement Learning threat response agent (`iomt_warden_dqn.py`).
-- [ ] End-to-end integration demo & telemetry dashboard.
+- [ ] Implement and verify mTLS/X.509 device identity provisioning (design target; not present in current Python pipeline snapshot).
+- [ ] Rework benchmark method 3 to evaluate learned checkpoint Q-values separately from threshold rules and the safety shield; report both ablations and reproducible metrics.
+- [ ] Reconcile architecture/specification notes against shipped code; mark proposed UI behaviors and unimplemented features clearly.
+- [ ] End-to-end viva demonstration automation script (`viva_demo.py`) and documented runbook.
 
 ## In Progress
 - [ ] Task 5: Viva Demonstration Automation Script (`viva_demo.py`)
 
 ## Completed
+- [x] Strix Live API Security Testing: Automated test suite verified 7 live API controls against `api_bridge.py` (CORS preflight, parameter whitelisting, 64KB buffer DoS guard, malformed JSON, and route traversal).
+- [x] Full Test Matrix Execution & Bugfix: Verified `test_all.py`, `core.py`, `ml_detector.py`, `rl_defense.py`, `train_dqn_offline.py`, `generate_figures.py`, and `web-ui` Vite production build; resolved `dataclasses` import bug in `ml_detector.py`.
+- [x] Whole-Repo Complexity Audit (`/ponytail-audit`): Identified 1,229 lines of dead/duplicate code and 5 removable dependencies.
 - [x] GitHub Remote Repository Deployment: Created public repo `Anzar0904/iot-reinforcement-learning` and pushed initial commit (`https://github.com/Anzar0904/iot-reinforcement-learning`).
 - [x] Strix Security Audit & Hardening (OWASP API4 buffer limits, API8 parameter whitelisting, sliding-window nonce garbage collection).
 - [x] Task 4: Offline 250-Episode DQN Training (`experiments/train_dqn_offline.py`, weights saved to `weights/dqn_iomt_warden.json` & `.pt`, auto-loaded on startup).

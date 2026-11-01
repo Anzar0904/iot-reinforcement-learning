@@ -1,6 +1,7 @@
 ---
 title: Research Benchmark Evaluation (50,000 Test Cycles)
 date: 2026-11-01
+type: concept
 tags:
   - evaluation
   - benchmarks
@@ -11,6 +12,9 @@ ai-first: true
 ---
 
 # Research Benchmark Evaluation (50,000 Test Cycles)
+
+## For future Claude
+This note records metrics emitted by the local synthetic benchmark script and describes how it constructs and evaluates its scenarios. The method labels in the output should not be interpreted as proof of clinical effectiveness or a clean learned-DQN comparison: the script's agent action path uses fixed thresholds and the safety shield.
 
 ## Objective & Experimental Setup
 To rigorously evaluate the proposed **IoMT-Warden** hybrid cyber-physical defense architecture against established baselines, an offline benchmark evaluation script (`experiments/run_evaluation.py`) was implemented and executed across **50,000 synthetic patient telemetry cycles** under 5 distinct operational scenarios:
@@ -36,14 +40,17 @@ To rigorously evaluate the proposed **IoMT-Warden** hybrid cyber-physical defens
 
 ## Critical Academic Takeaways
 
-### 1. Zero Missed Clinical Emergencies Guarantee
-The defining achievement of the **Safety Shield** is mathematically eliminating missed clinical emergencies:
-- The Rule-Based baseline missed **1,301 emergencies** because static global thresholds failed to distinguish patient-specific cardiac baseline variations from acute crises.
-- Isolation Forest missed **1,187 emergencies** because multidimensional density estimation alone lacks explicit clinical rule constraints.
-- **IoMT-Warden achieved 0 missed emergencies**, validating that the Safety Shield prevented any clinical emergency from being suppressed by cyber quarantine policies.
+> **Interpretation caveat:** The evaluation source calls `DQNAgent.select_action(..., eval_mode=True)`. In the inspected implementation this path uses explicit threshold branches, not checkpoint Q-values, and the safety shield is applied before scoring. The reported method is the combined threshold policy and shield, not a standalone learned-DQN measurement.
+
+> **Interpretation caveat:** The evaluation source (`experiments/run_evaluation.py`) calls `DQNAgent.select_action(..., eval_mode=True)`. In the inspected `rl_defense.py`, this method selects actions through explicit threshold branches; it does not use the checkpoint Q-weights. The safety shield is also applied before scoring. Thus the reported third method is the combined threshold-policy-plus-shield pipeline, not a controlled standalone measurement of the trained DQN. The scenarios are synthetic, and the counts/metrics are the script's reported outputs.
+
+### 1. Misses in This Synthetic Run
+- The Rule-Based baseline recorded 1,301 missed events counted as emergencies.
+- Isolation Forest recorded 1,187 missed events counted as emergencies.
+- The combined threshold-policy and Safety Shield method recorded zero missed events in this run. This is a result for the script's synthetic scenario mix, not a general guarantee.
 
 ### 2. High Recall / Threat Detection Rate
-IoMT-Warden achieved **1.000 (100%) Recall** across all evaluated attack and crisis conditions, successfully isolating malicious devices and alarming medical teams.
+The combined threshold-policy and shield method recorded **1.000 recall** across the synthetic scenario set. This does not isolate learned-policy performance.
 
 ### 3. Generated Publication Artifacts
 The evaluation output is persisted to:
@@ -54,3 +61,17 @@ The evaluation output is persisted to:
   - `anomaly_score.svg` / `.png` (Isolation Forest score vs $T_1$ and $T_2$)
   - `twin_prediction.svg` / `.png` (Digital Twin EWMA observed vs forecast)
   - `method_comparison.svg` / `.png` (Performance comparison bar chart)
+
+## Sources and Reproduction
+- Local evaluator: `experiments/run_evaluation.py`
+- Output metrics: `experiments/evaluation_results.json` and `experiments/evaluation_results.csv`
+- Isolation Forest method documentation: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html
+- DQN training background: https://docs.pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
+- Benchmark values are workspace-generated and are not externally validated.
+- [[wiki/concepts/five-pillar-security-architecture]]
+- [[wiki/projects/iot-healthcare-security]]
+
+## Related Notes
+- [[wiki/concepts/five-pillar-security-architecture]]
+- [[wiki/projects/iot-healthcare-security]]
+- [[wiki/decisions/2026-11-01-strix-security-hardening-and-benchmark-validation]]

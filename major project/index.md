@@ -33,6 +33,12 @@ This is a starter index for the Obsidian second brain. Read [`AGENTS.md`](AGENTS
 - `raw/` — Immutable source material.
 - `boards/` — Task boards.
   - [[boards/project-board|Project Task Board]]
+- [[wiki/concepts/ui-ux-dashboard-design-specification]] — Includes three original concept images and eight coordinated light medical-center page references under `ui-references/`.
 
 ## Vault operations
 - [[log]] — Pointer to append-only daily operation logs in `Logs/`.
+
+## Current status and evidence
+- [[wiki/projects/iot-healthcare-security]] is the current status entry point.
+- [[wiki/concepts/five-pillar-security-architecture]] maps the five pillars to the workspace implementation and identifies unimplemented mTLS and evaluation caveats.
+- [[wiki/concepts/research-benchmark-evaluation-50k]] records metrics with a note that the measured “DQN” action path is threshold based plus the safety shield.
